@@ -1,0 +1,10 @@
+[project]
+version = "0.1.0"
+name = "fobos-gui"
+requires-python = ">=3.11"
+dependencies = [
+    "git+https://github.com/albireox/jaeger-core.git",
+    "vmbpy",
+    "numpy",
+    "PySide6",
+]

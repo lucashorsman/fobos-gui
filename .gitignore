@@ -1,0 +1,5 @@
+.bak
+.lock
+.venv
+__pycache__/
+*.pyc
