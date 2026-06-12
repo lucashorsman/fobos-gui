@@ -1,5 +1,5 @@
-#holds the state of the application, like current alpha/beta of the positioner
-#whether the positioner is moving/ready/errored
+#holds the state of the application, like current alpha/beta of the positioners
+#whether the positioners are moving/ready/errored
 #other widgets will connect to the signals emitted by this class
 #this class emits model_updated() whenever the state changes, and the widgets will update themselves accordingly
 
@@ -10,15 +10,29 @@ class AppModel(QObject):
 
     def __init__(self):
         super().__init__()
-        self.alpha = 0.0
-        self.beta = 0.0
-        self.positioner_state = "ready"  # can be "ready", "moving", "errored"
+        self.positioners = {}
+        # {id: {"alpha": 0.0, "beta": 0.0, "state": "ready"}}
 
-    def update_positions(self, new_alpha, new_beta):
-        self.alpha = new_alpha
-        self.beta = new_beta
-        self.model_updated.emit()
+    def register_positioner(self, positioner_id: int):
+        if positioner_id not in self.positioners:
+            self.positioners[positioner_id] = {
+                "alpha": 0.0,
+                "beta": 0.0,
+                "state": "ready"
+            }
+            self.model_updated.emit()
 
-    def update_positioner_state(self, new_state):
-        self.positioner_state = new_state
-        self.model_updated.emit()
+    def update_positions(self, positions: dict):
+        changed = False
+        for pid, (new_alpha, new_beta) in positions.items():
+            if pid in self.positioners:
+                self.positioners[pid]["alpha"] = new_alpha
+                self.positioners[pid]["beta"] = new_beta
+                changed = True
+        if changed:
+            self.model_updated.emit()
+
+    def update_positioner_state(self, positioner_id: int, new_state: str):
+        if positioner_id in self.positioners:
+            self.positioners[positioner_id]["state"] = new_state
+            self.model_updated.emit()
