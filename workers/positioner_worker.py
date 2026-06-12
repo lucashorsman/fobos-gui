@@ -27,7 +27,6 @@ class PositionerWorker(QObject):
         asyncio.run_coroutine_threadsafe(
             self._do_move(alpha, beta), self._loop
         )
-
     async def _do_move(self, alpha: float, beta: float):
         try:
             self._is_moving = True

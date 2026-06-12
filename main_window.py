@@ -35,12 +35,14 @@ class MainWindow(QMainWindow):
         
         # Start the poller which will initialize the FPS instance
         self.poller = FPSManager()
+        #get the move_requested signal from the control panel and connect it to the on_move_requested slot in this class, which will forward the request to the appropriate worker 
+        #now, when the control panel emits move_requested, the main window will receive it and call on_move_requested, which will then call request_move on the appropriate PositionerWorker instance, which will call goto.
         self.poller.ready.connect(self.on_fps_ready)
         self.poller.positions_updated.connect(self.model.update_positions)
         self.poller.error.connect(self.on_fps_error)
         self.poller.start()
 
-    def _on_model_updated(self):
+    def _on_model_updated(self): #called when the model emits model_updated, which happens whenever the positioners dict is updated with new positions or states
         self.status_bar.update_display(self.model.positioners)
 
     def on_move_requested(self, pid: int, alpha: float, beta: float):

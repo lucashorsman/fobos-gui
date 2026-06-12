@@ -12,3 +12,4 @@ except Exception as exc:
 			"Vimba camera support is unavailable: the installed VmbC runtime does not match the vmbpy package. "
 			"Install the Vimba X SDK version expected by vmbpy 1.2.1 (VmbC 1.3.0), or update the package/runtime pair."
 		) from _VMBPY_IMPORT_ERROR
+	

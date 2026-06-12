@@ -29,9 +29,9 @@ fobos_ui/
 ├── app_model.py              # Central state store. Single source of truth.
 ├── constants.py              # Shared string constants (positioner states).
 ├── main_window.py            # Assembles widgets, wires all signals/slots.
-├── fps_manager.py            # Initializes FPS once, emits ready(fps) when live.
 ├── workers/
-│   ├── positioner_worker.py  # QThread. Owns positioner commands and polling.
+│   ├── fps_manager.py         # QThread. Initializes FPS, polls positioners at 3Hz.
+│   ├── positioner_worker.py  # QObject. Owns positioner commands.
 │   └── vimba_worker.py       # QThread. Owns vmbpy camera session and streaming.
 └── widgets/
     ├── camera_widget.py      # Frame display, annulus overlay, click-to-move.
@@ -171,12 +171,11 @@ POSITIONER_ERROR   = "error"
 This is the trickiest part of the architecture. The pattern used throughout:
 
 ```python
-class PositionerWorker(QThread):
-    def run(self):
-        self._loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self._loop)
-        self._loop.run_until_complete(self._main())
-        self._loop.close()
+class PositionerWorker(QObject):
+    def __init__(self, fps, loop, positioner_id):
+        super().__init__()
+        self._fps = fps
+        self._loop = loop
 
     @Slot(float, float)
     def request_move(self, alpha, beta):
@@ -196,8 +195,8 @@ stop events on shutdown).
 
 ## Shutdown
 
-`MainWindow` must call `worker.stop()` on all workers before closing.
-`PositionerWorker.stop()` sets the asyncio stop event (via
+`MainWindow` must call `worker.stop()` on all workers (or poller threads) before closing.
+`FPSManager.stop()` sets the asyncio stop event (via
 `call_soon_threadsafe`) and calls `self.wait()` to block until the thread exits
 cleanly. Without this, the asyncio loop may still be running when Python tears
 down and produce noisy errors.
