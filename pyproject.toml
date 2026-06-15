@@ -8,9 +8,13 @@ requires-python = ">=3.11"
 
 dependencies = [
     "jaeger-core @ git+https://github.com/albireox/jaeger-core.git",
-    "vmbpy @ https://github.com/alliedvision/VmbPy/releases/download/1.2.1/vmbpy-1.2.1-py3-none-any.whl",
     "numpy",
     "PySide6",
+    "qdarkstyle>=3.2.3",
+    "vmbpy",
 ]
+
+[tool.uv.sources]
+vmbpy = { path = "vmbpy-1.0.4-py3-none-any.whl" }
 
 

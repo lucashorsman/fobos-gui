@@ -1,11 +1,3 @@
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
-                               QLabel, QLineEdit, QPushButton, QComboBox)
-from PySide6.QtCore import Signal
-from PySide6.QtGui import QDoubleValidator
-#this will show the 2d view of the positioners with the annulus. if the user clicks (and the pos is valid)
-#then we will trigger the positioner to move by calculating the alpha and beta from the 2d (x,y) click position.
-
-
 import sys
 
 from PySide6.QtCore import QPoint, Qt
@@ -20,21 +12,49 @@ from helpers.constants import SHORT_ARM_LENGTH, LONG_ARM_LENGTH
 class View2D(QWidget):
     def __init__(self):
         super().__init__()
-        self.setup_ui()
-    def setup_ui(self):
-        layout = QVBoxLayout(self)
-        
-        self.setWindowTitle("Visualization")
-        
         self.panel_width = 170
-        #set the lengths of the positioner links
+        self.margin = 24
         self.link_lengths = (SHORT_ARM_LENGTH, LONG_ARM_LENGTH)
+        self.target_offset = None
 
-        drawing_width = self.width() - self.panel_width
-        self.center = QPoint(drawing_width // 2, self.height() // 2)
-        self.target_point = QPoint(self.center.x() + 20, self.center.y() + 50)
+        self.setMinimumSize(400, 300)
+        self.setWindowTitle("Visualization")
+
+    def _drawing_geometry(self):
+        panel_x = max(0, self.width() - self.panel_width)
+        canvas_width = max(1, panel_x - 2 * self.margin)
+        canvas_height = max(1, self.height() - 2 * self.margin)
+
+        center = QPoint(
+            self.margin + canvas_width // 2,
+            self.margin + canvas_height // 2,
+        )
+
+        workspace_radius = self.link_lengths[0] + self.link_lengths[1]
+        max_display_radius = max(1, min(canvas_width, canvas_height) // 2)
+        scale = min(1.0, max_display_radius / workspace_radius) if workspace_radius else 1.0
+
+        return center, scale, panel_x
+
+    def _offset_to_point(self, center, offset_x, offset_y, scale):
+        return QPoint(
+            int(round(center.x() + offset_x * scale)),
+            int(round(center.y() + offset_y * scale)),
+        )
+
+    def _point_to_offset(self, center, point, scale):
+        if scale == 0:
+            return 0.0, 0.0
+        return (point.x() - center.x()) / scale, (point.y() - center.y()) / scale
 
     def paintEvent(self, event):
+        center, scale, panel_x = self._drawing_geometry()
+
+        if self.target_offset is None:
+            self.target_offset = (20.0, 50.0)
+
+        target_point = self._offset_to_point(center, self.target_offset[0], self.target_offset[1], scale)
+
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.fillRect(self.rect(), Qt.white)  # Clear the background
@@ -42,17 +62,22 @@ class View2D(QWidget):
         # Draw the target point
         painter.setPen(Qt.red)
         painter.setBrush(Qt.red)
-        painter.drawEllipse(self.target_point, 5, 5)
+        painter.drawEllipse(target_point, 5, 5)
+
         # Draw the annulus representing the reachable workspace
         painter.setBrush(Qt.NoBrush)
-        inner_radius = abs(self.link_lengths[0] - self.link_lengths[1])
-        painter.drawEllipse(self.center, inner_radius, inner_radius)
-        painter.drawEllipse(self.center, self.link_lengths[0] + self.link_lengths[1], self.link_lengths[0] + self.link_lengths[1])
+        display_short = self.link_lengths[0] * scale
+        display_long = self.link_lengths[1] * scale
+        inner_radius = abs(display_short - display_long)
+        outer_radius = display_short + display_long
+        painter.drawEllipse(center, int(round(inner_radius)), int(round(inner_radius)))
+        painter.drawEllipse(center, int(round(outer_radius)), int(round(outer_radius)))
 
         # Calculate inverse kinematics solutions
+        target_dx, target_dy = self._point_to_offset(center, target_point, scale)
         solutions = solve_inverse_kinematics(
-            self.target_point.x() - self.center.x(),
-            self.target_point.y() - self.center.y(),
+            target_dx,
+            target_dy,
             *self.link_lengths
         )
 
@@ -63,21 +88,23 @@ class View2D(QWidget):
                 theta2_rad = math.radians(theta2_deg)
 
                 # Calculate joint positions
-                joint1_x = self.center.x() + self.link_lengths[0] * math.cos(theta1_rad)
-                joint1_y = self.center.y() + self.link_lengths[0] * math.sin(theta1_rad)
+                joint1_x = center.x() + display_short * math.cos(theta1_rad)
+                joint1_y = center.y() + display_short * math.sin(theta1_rad)
 
-                joint2_x = joint1_x + self.link_lengths[1] * math.cos(theta1_rad + theta2_rad)
-                joint2_y = joint1_y + self.link_lengths[1] * math.sin(theta1_rad + theta2_rad)
+                joint2_x = joint1_x + display_long * math.cos(theta1_rad + theta2_rad)
+                joint2_y = joint1_y + display_long * math.sin(theta1_rad + theta2_rad)
 
                 # Draw the links
                 painter.setPen(Qt.blue)
-                painter.drawLine(self.center, QPoint(joint1_x, joint1_y))
-                painter.drawLine(QPoint(joint1_x, joint1_y), QPoint(joint2_x, joint2_y))
+                painter.drawLine(center, QPoint(int(round(joint1_x)), int(round(joint1_y))))
+                painter.drawLine(
+                    QPoint(int(round(joint1_x)), int(round(joint1_y))),
+                    QPoint(int(round(joint2_x)), int(round(joint2_y))),
+                )
 
-        self.draw_angles_panel(painter, solutions)
+        self.draw_angles_panel(painter, solutions, panel_x)
 
-    def draw_angles_panel(self, painter, solutions):
-        panel_x = self.width() - self.panel_width
+    def draw_angles_panel(self, painter, solutions, panel_x):
         painter.fillRect(panel_x, 0, self.panel_width, self.height(), Qt.lightGray)
 
         painter.setPen(Qt.black)
@@ -103,12 +130,17 @@ class View2D(QWidget):
             return
 
         click = event.position()
-        self.target_point = QPoint(int(round(click.x())), int(round(click.y())))
+        _, _, panel_x = self._drawing_geometry()
+        if click.x() >= panel_x:
+            return
+
+        center, scale, _ = self._drawing_geometry()
+        self.target_offset = self._point_to_offset(center, click.toPoint(), scale)
 
         self.update()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = Window()
+    window = View2D()
     window.show()
     sys.exit(app.exec())
