@@ -1,10 +1,11 @@
 #assembles all widgets and components for the main window
-from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout
+from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout
 from app_model import AppModel
 from workers.positioner_worker import PositionerWorker
 from workers.fps_manager import FPSManager
 from widgets.status_bar import StatusBar
 from widgets.control_panel import ControlPanel
+from widgets.view2D import View2D
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -13,16 +14,20 @@ class MainWindow(QMainWindow):
         self.setGeometry(100, 100, 800, 600)
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
-        self.layout = QVBoxLayout()
+        self.layout = QHBoxLayout()
+        self.right_layout = QVBoxLayout()
         
         self.central_widget.setLayout(self.layout)
         
         # Instantiate UI components
         self.status_bar = StatusBar()
         self.control_panel = ControlPanel()
-        
-        self.layout.addWidget(self.status_bar)
-        self.layout.addWidget(self.control_panel)
+        self.view2D = View2D()
+
+        self.layout.addWidget(self.view2D)
+        self.right_layout.addWidget(self.status_bar)
+        self.right_layout.addWidget(self.control_panel)
+        self.layout.addLayout(self.right_layout)
 
         self.model = AppModel()
         
@@ -77,3 +82,12 @@ class MainWindow(QMainWindow):
 
     def on_fps_error(self, err_msg=""):
         print(f"Error initializing FPS: {err_msg}")
+    def closeEvent(self, event):
+        if self.poller:
+            self.poller.stop()
+        for worker in self.workers.values():
+            worker.stop()
+
+        #also kill the vimba worker when we get there.
+        event.accept()
+
