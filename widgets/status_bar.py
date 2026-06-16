@@ -14,7 +14,7 @@ class StatusBar(QWidget):
         self.text_display = QTextEdit()
         self.text_display.setReadOnly(True)
         # Use a monospaced font for better alignment
-        self.text_display.setStyleSheet("font-family: monospace;")
+        # self.text_display.setStyleSheet("font-family: monospace;")
         layout.addWidget(self.text_display)
 
     def update_display(self, positioners_dict):

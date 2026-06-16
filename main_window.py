@@ -12,6 +12,15 @@ from widgets.view2D import View2D
 import qdarkstyle
 
 class MainWindow(QMainWindow):
+    @staticmethod
+    def _normalize_for_positioner(angle: float) -> float:
+        adjusted = float(angle)
+        while adjusted < -10.0:
+            adjusted += 360.0
+        while adjusted > 370.0:
+            adjusted -= 360.0
+        return adjusted
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Fobos GUI")
@@ -61,6 +70,7 @@ class MainWindow(QMainWindow):
         # Wire up UI to model and actions
         self.model.model_updated.connect(self._on_model_updated)
         self.control_panel.move_requested.connect(self.on_move_requested)
+        self.view2D.move_requested.connect(self.on_move_requested)
         
         self.poller = None
         self.vimba_worker = None
@@ -85,6 +95,8 @@ class MainWindow(QMainWindow):
 
     def on_move_requested(self, pid: int, alpha: float, beta: float):
         if pid in self.workers:
+            alpha = self._normalize_for_positioner(alpha)
+            beta = self._normalize_for_positioner(beta)
             self.workers[pid].request_move(alpha, beta)
 
     def on_fps_ready(self, fps):
@@ -109,6 +121,7 @@ class MainWindow(QMainWindow):
             
         # Update dropdown
         self.control_panel.update_positioners(self.model.positioners.keys())
+        self.view2D.update_positioners(self.model.positioners.keys())
             
         print(f"FPS initialized, {len(self.workers)} workers started")
         print(f"pids in use: {self.model.positioners.keys()}")

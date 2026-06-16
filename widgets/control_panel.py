@@ -29,7 +29,7 @@ class ControlPanel(QWidget):
         alpha_layout = QHBoxLayout()
         alpha_layout.addWidget(QLabel("Alpha (°):"))
         self.alpha_input = QLineEdit()
-        self.alpha_input.setValidator(QDoubleValidator(-360.0, 360.0, 4, self))
+        self.alpha_input.setValidator(QDoubleValidator(-9.0, 369.0, 4, self))
         alpha_layout.addWidget(self.alpha_input)
         layout.addLayout(alpha_layout)
 
@@ -37,7 +37,7 @@ class ControlPanel(QWidget):
         beta_layout = QHBoxLayout()
         beta_layout.addWidget(QLabel("Beta (°):"))
         self.beta_input = QLineEdit()
-        self.beta_input.setValidator(QDoubleValidator(-360.0, 360.0, 4, self))
+        self.beta_input.setValidator(QDoubleValidator(-9.0, 369.0, 4, self))
         beta_layout.addWidget(self.beta_input)
         layout.addLayout(beta_layout)
 

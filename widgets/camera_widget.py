@@ -20,7 +20,7 @@ class CameraWidget(QWidget):
         self._frame = frame.copy() if hasattr(frame, "copy") else frame
         self._image = self._frame_to_qimage(self._frame)
         self.update()
-        print("CameraWidget: Frame updated and widget repainted")
+        # print("CameraWidget: Frame updated and widget repainted")
 
     def paintEvent(self, event):
         painter = QPainter(self)

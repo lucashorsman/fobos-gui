@@ -47,7 +47,7 @@ class VimbaWorker(QThread):
 						frame = cam.get_frame()
 						image = frame.as_opencv_image().copy()
 						self.frame_ready.emit(image)
-						print("VimbaWorker: Frame emitted")
+						# print("VimbaWorker: Frame emitted")
 		except Exception as exc:
 			self.error.emit(str(exc))
 		finally:

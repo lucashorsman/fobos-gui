@@ -1,8 +1,8 @@
 import sys
 
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QPainter
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 
 from helpers.annulus import solve_inverse_kinematics
 import math
@@ -10,15 +10,32 @@ from helpers.constants import SHORT_ARM_LENGTH, LONG_ARM_LENGTH
 
 
 class View2D(QWidget):
+    # Emits positioner_id, alpha, beta
+    move_requested = Signal(int, float, float)
+
     def __init__(self):
         super().__init__()
         self.panel_width = 170
         self.margin = 24
         self.link_lengths = (SHORT_ARM_LENGTH, LONG_ARM_LENGTH)
         self.target_offset = None
+        self._positioner_ids = []
+        self._selected_pid = None
 
         self.setMinimumSize(400, 300)
         self.setWindowTitle("Visualization")
+        # Create panel button once and position it during paint
+        self.button = QPushButton("Send Target", self)
+        self.button.resize(100, 40)
+        self.button.clicked.connect(self.on_button_click)
+
+    def update_positioners(self, pids):
+        self._positioner_ids = sorted(pids)
+
+        if self._selected_pid in self._positioner_ids:
+            return
+
+        self._selected_pid = self._positioner_ids[0] if self._positioner_ids else None
 
     def _drawing_geometry(self):
         panel_x = max(0, self.width() - self.panel_width)
@@ -46,6 +63,14 @@ class View2D(QWidget):
         if scale == 0:
             return 0.0, 0.0
         return (point.x() - center.x()) / scale, (point.y() - center.y()) / scale
+
+    def _normalize_for_positioner(self, angle_deg):
+        adjusted = float(angle_deg)
+        while adjusted < -10.0:
+            adjusted += 360.0
+        while adjusted > 370.0:
+            adjusted -= 360.0
+        return adjusted
 
     def paintEvent(self, event):
         center, scale, panel_x = self._drawing_geometry()
@@ -120,10 +145,40 @@ class View2D(QWidget):
         else:
             alpha_2, beta_2 = alpha_1, beta_1
 
+        alpha_1 = self._normalize_for_positioner(alpha_1)
+        beta_1 = self._normalize_for_positioner(beta_1)
+        alpha_2 = self._normalize_for_positioner(alpha_2)
+        beta_2 = self._normalize_for_positioner(beta_2)
+
         painter.drawText(panel_x + 12, 56, f"alpha: {alpha_1:.2f} deg")
         painter.drawText(panel_x + 12, 112, f"alpha: {alpha_2:.2f} deg")
         painter.drawText(panel_x + 12, 80, f"beta: {beta_1:.2f} deg")
         painter.drawText(panel_x + 12, 136, f"beta: {beta_2:.2f} deg")
+        # Position the button inside the panel
+        btn_x = panel_x + 12
+        btn_y = 160
+        self.button.move(btn_x, btn_y)
+        self.button.show()
+
+    def on_button_click(self):
+        if self._selected_pid is None:
+            return
+
+        center, scale, _ = self._drawing_geometry()
+        target_dx, target_dy = self._point_to_offset(center, self._offset_to_point(center, self.target_offset[0], self.target_offset[1], scale), scale)
+        solutions = solve_inverse_kinematics(
+            target_dx,
+            target_dy,
+            *self.link_lengths
+        )
+        if solutions: # later on we can make a decision on which solution to use based on some criteria (e.g. closest to current position)
+            alpha_1, beta_1 = solutions[0]
+            alpha_1 = self._normalize_for_positioner(alpha_1)
+            beta_1 = self._normalize_for_positioner(beta_1)
+            self.move_requested.emit(self._selected_pid, alpha_1, beta_1)
+            
+        else:
+            print("No valid IK solution found for the target point.")   
 
     def mousePressEvent(self, event):
         if event.button() != Qt.LeftButton:
