@@ -76,7 +76,7 @@ class MainWindow(QMainWindow):
         self.poller.start()
 
         self.vimba_worker = VimbaWorker(self)
-        self.vimba_worker.frame_ready.connect(self.camera_widget.update_frame)
+        self.vimba_worker.frame_ready.connect(self.camera_widget.update_frame, Qt.QueuedConnection)
         self.vimba_worker.error.connect(self.on_vimba_error)
         self.vimba_worker.start()
 

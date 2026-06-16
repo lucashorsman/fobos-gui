@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import QPoint, Qt, Slot
 from PySide6.QtGui import QImage, QPainter
 from PySide6.QtWidgets import QWidget
 
@@ -15,10 +15,12 @@ class CameraWidget(QWidget):
         self.setMinimumSize(400, 300)
         self.setWindowTitle("Camera View")
 
+    @Slot(object)
     def update_frame(self, frame):
         self._frame = frame.copy() if hasattr(frame, "copy") else frame
         self._image = self._frame_to_qimage(self._frame)
         self.update()
+        print("CameraWidget: Frame updated and widget repainted")
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -45,9 +47,14 @@ class CameraWidget(QWidget):
             bytes_per_line = width
             return QImage(frame.data, width, height, bytes_per_line, QImage.Format_Grayscale8).copy()
 
-        if frame.ndim == 3 and frame.shape[2] == 3:
-            height, width, _ = frame.shape
-            bytes_per_line = width * 3
-            return QImage(frame.data, width, height, bytes_per_line, QImage.Format_BGR888).copy()
+        if frame.ndim == 3:
+            if frame.shape[2] == 3:
+                height, width, _ = frame.shape
+                bytes_per_line = width * 3
+                return QImage(frame.data, width, height, bytes_per_line, QImage.Format_BGR888).copy()
+            elif frame.shape[2] == 1:
+                height, width, _ = frame.shape
+                bytes_per_line = width
+                return QImage(frame.data, width, height, bytes_per_line, QImage.Format_Grayscale8).copy()
 
         return None
