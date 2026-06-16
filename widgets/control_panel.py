@@ -6,6 +6,7 @@ from PySide6.QtGui import QDoubleValidator
 class ControlPanel(QWidget):
     # Emits positioner_id, alpha, beta
     move_requested = Signal(int, float, float)
+    selection_changed = Signal(int)
 
     def __init__(self):
         super().__init__()
@@ -22,6 +23,7 @@ class ControlPanel(QWidget):
         pid_layout = QHBoxLayout()
         pid_layout.addWidget(QLabel("Positioner ID:"))
         self.pid_combo = QComboBox()
+        self.pid_combo.currentIndexChanged.connect(self._on_combo_changed)
         pid_layout.addWidget(self.pid_combo)
         layout.addLayout(pid_layout)
 
@@ -48,6 +50,7 @@ class ControlPanel(QWidget):
 
     def update_positioners(self, pids):
         current_pid = self.pid_combo.currentText()
+        self.pid_combo.blockSignals(True)
         self.pid_combo.clear()
         for pid in sorted(pids):
             self.pid_combo.addItem(str(pid), userData=pid)
@@ -56,6 +59,21 @@ class ControlPanel(QWidget):
         idx = self.pid_combo.findText(current_pid)
         if idx >= 0:
             self.pid_combo.setCurrentIndex(idx)
+        self.pid_combo.blockSignals(False)
+
+    def _on_combo_changed(self, index):
+        if index >= 0:
+            pid = self.pid_combo.itemData(index)
+            self.selection_changed.emit(pid)
+
+    def update_selected_positioner(self, pid: int):
+        if pid is None:
+            return
+        idx = self.pid_combo.findData(pid)
+        if idx >= 0 and self.pid_combo.currentIndex() != idx:
+            self.pid_combo.blockSignals(True)
+            self.pid_combo.setCurrentIndex(idx)
+            self.pid_combo.blockSignals(False)
 
     def _on_go_clicked(self):
         if self.pid_combo.count() == 0:

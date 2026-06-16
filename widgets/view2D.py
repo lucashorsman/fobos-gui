@@ -34,10 +34,6 @@ class View2D(QWidget):
     def update_positioners(self, pids):
         self._positioner_ids = sorted(pids)
 
-        if self._selected_pid in self._positioner_ids:
-            return        
-        self._selected_pid = self._positioner_ids[0] if self._positioner_ids else None
-
     def _drawing_geometry(self):
         panel_x = max(0, self.width() - self.panel_width)
         canvas_width = max(1, panel_x - 2 * self.margin)
@@ -227,7 +223,8 @@ class View2D(QWidget):
         self._refresh_button_state()
 
         self.update()
-    def update_display(self, positioners_dict):
+    def update_display(self, positioners_dict, selected_pid=None):
+        self._selected_pid = selected_pid
         #if moving, make the button say "Moving..." and disable it, otherwise say "Send Target" and enable it
         if self._selected_pid is not None:
             self._selected_positioner_state = positioners_dict.get(self._selected_pid, {}).get("state", "ready")

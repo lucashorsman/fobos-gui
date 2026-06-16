@@ -11,6 +11,7 @@ class AppModel(QObject):
     def __init__(self):
         super().__init__()
         self.positioners = {}
+        self.selected_positioner_id = None
         # {id: {"alpha": 0.0, "beta": 0.0, "state": "ready"}}
 
     def register_positioner(self, positioner_id: int):
@@ -20,6 +21,13 @@ class AppModel(QObject):
                 "beta": 0.0,
                 "state": "ready"
             }
+            if self.selected_positioner_id is None:
+                self.selected_positioner_id = positioner_id
+            self.model_updated.emit()
+
+    def set_selected_positioner(self, positioner_id: int):
+        if positioner_id in self.positioners and self.selected_positioner_id != positioner_id:
+            self.selected_positioner_id = positioner_id
             self.model_updated.emit()
 
     def update_positions(self, positions: dict):
