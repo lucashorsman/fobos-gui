@@ -1,5 +1,6 @@
 import asyncio
 import traceback
+import os
 from PySide6.QtCore import QThread, Signal
 from jaeger.core import FPS
 
@@ -25,7 +26,13 @@ class FPSManager(QThread):
     async def _main(self):
         self._stop_event = asyncio.Event()
         try:
-            self._fps = FPS()
+            if os.environ.get("FOBOS_MOCK") == "1":
+                from workers.mock_fps import MockFPS
+                self._fps = MockFPS(num_positioners=5)
+            else:
+                from jaeger.core import FPS
+                self._fps = FPS()
+
             await self._fps.initialise()
             self.ready.emit(self._fps)
             
