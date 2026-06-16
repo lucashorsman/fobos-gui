@@ -15,6 +15,8 @@ class View2D(QWidget):
 
     def __init__(self):
         super().__init__()
+        self.validSolutionExists = False
+        self._selected_positioner_state = "ready"
         self.panel_width = 170
         self.margin = 24
         self.link_lengths = (SHORT_ARM_LENGTH, LONG_ARM_LENGTH)
@@ -33,8 +35,7 @@ class View2D(QWidget):
         self._positioner_ids = sorted(pids)
 
         if self._selected_pid in self._positioner_ids:
-            return
-
+            return        
         self._selected_pid = self._positioner_ids[0] if self._positioner_ids else None
 
     def _drawing_geometry(self):
@@ -72,6 +73,25 @@ class View2D(QWidget):
             adjusted -= 360.0
         return adjusted
 
+    def _refresh_button_state(self):
+        if self._selected_pid is None:
+            self.button.setText("Send Target")
+            self.button.setEnabled(False)
+            return
+
+        if self._selected_positioner_state == "moving":
+            self.button.setText("Moving...")
+            self.button.setEnabled(False)
+        elif self._selected_positioner_state == "error":
+            self.button.setText("Error")
+            self.button.setEnabled(False)
+        elif not self.validSolutionExists:
+            self.button.setText("No Solution")
+            self.button.setEnabled(False)
+        else:
+            self.button.setText("Send Target")
+            self.button.setEnabled(True)
+
     def paintEvent(self, event):
         center, scale, panel_x = self._drawing_geometry()
 
@@ -106,6 +126,7 @@ class View2D(QWidget):
             *self.link_lengths
         )
 
+        self.validSolutionExists = bool(solutions)
         if solutions:
             for theta1_deg, theta2_deg in solutions:
                 # Convert angles to radians for drawing
@@ -176,9 +197,12 @@ class View2D(QWidget):
             alpha_1 = self._normalize_for_positioner(alpha_1)
             beta_1 = self._normalize_for_positioner(beta_1)
             self.move_requested.emit(self._selected_pid, alpha_1, beta_1)
-            
+            self.validSolutionExists = True
         else:
+            self.validSolutionExists = False
             print("No valid IK solution found for the target point.")   
+
+        self._refresh_button_state()
 
     def mousePressEvent(self, event):
         if event.button() != Qt.LeftButton:
@@ -192,7 +216,26 @@ class View2D(QWidget):
         center, scale, _ = self._drawing_geometry()
         self.target_offset = self._point_to_offset(center, click.toPoint(), scale)
 
+        # Recompute IK for the clicked target and cache whether a valid solution exists.
+        target_dx, target_dy = self.target_offset
+        solutions = solve_inverse_kinematics(
+            target_dx,
+            target_dy,
+            *self.link_lengths
+        )
+        self.validSolutionExists = bool(solutions)
+        self._refresh_button_state()
+
         self.update()
+    def update_display(self, positioners_dict):
+        #if moving, make the button say "Moving..." and disable it, otherwise say "Send Target" and enable it
+        if self._selected_pid is not None:
+            self._selected_positioner_state = positioners_dict.get(self._selected_pid, {}).get("state", "ready")
+        else:
+            self._selected_positioner_state = "ready"
+
+        self._refresh_button_state()
+        
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

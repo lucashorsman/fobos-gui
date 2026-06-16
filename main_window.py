@@ -92,6 +92,7 @@ class MainWindow(QMainWindow):
 
     def _on_model_updated(self): #called when the model emits model_updated, which happens whenever the positioners dict is updated with new positions or states
         self.status_bar.update_display(self.model.positioners)
+        self.view2D.update_display(self.model.positioners)
 
     def on_move_requested(self, pid: int, alpha: float, beta: float):
         if pid in self.workers:
