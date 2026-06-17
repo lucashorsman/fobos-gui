@@ -12,6 +12,9 @@ dependencies = [
     "PySide6",
     "qdarkstyle>=3.2.3",
     "vmbpy",
+    "astropy>=7.1",
+    "scikit-image>=0.26",
+    "matplotlib>=3.10",
 ]
 
 [tool.uv.sources]

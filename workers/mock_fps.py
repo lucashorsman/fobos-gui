@@ -8,7 +8,7 @@ class MockPositioner:
         self.beta = 0.0
 
 class MockFPS:
-    def __init__(self, num_positioners=5):
+    def __init__(self, num_positioners=1600):
         # Create dummy positioners (IDs 1 through num_positioners)
         self.positioners = {i: MockPositioner(i) for i in range(1, num_positioners + 1)}
 

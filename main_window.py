@@ -71,6 +71,7 @@ class MainWindow(QMainWindow):
         self.model.model_updated.connect(self._on_model_updated)
         self.control_panel.move_requested.connect(self.on_move_requested)
         self.view2D.move_requested.connect(self.on_move_requested)
+        self.camera_widget.move_requested.connect(self.on_move_requested)
         self.control_panel.selection_changed.connect(self.model.set_selected_positioner)
         
         self.poller = None
@@ -94,6 +95,7 @@ class MainWindow(QMainWindow):
     def _on_model_updated(self): #called when the model emits model_updated, which happens whenever the positioners dict is updated with new positions or states
         self.status_bar.update_display(self.model.positioners)
         self.view2D.update_display(self.model.positioners, self.model.selected_positioner_id)
+        self.camera_widget.update_display(self.model.positioners, self.model.selected_positioner_id)
         self.control_panel.update_selected_positioner(self.model.selected_positioner_id)
 
     def on_move_requested(self, pid: int, alpha: float, beta: float):

@@ -2,30 +2,107 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, Qt, Slot
-from PySide6.QtGui import QImage, QPainter
+import math
+from PySide6.QtCore import QPoint, QPointF, Qt, Slot, Signal
+from PySide6.QtGui import QImage, QPainter, QTransform, QPen, QPainterPath, QColor
 from PySide6.QtWidgets import QWidget
+
+from helpers.constants import SHORT_ARM_LENGTH, LONG_ARM_LENGTH
+from helpers.annulus import solve_inverse_kinematics
+from helpers.projection import PositionerProjection
 
 
 class CameraWidget(QWidget):
+    move_requested = Signal(int, float, float)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._frame = None
         self._image = None
+        self._selected_pid = None
         self.setMinimumSize(400, 300)
         self.setWindowTitle("Camera View")
+
+        # Create a placeholder image so the overlay can be tested without a real camera
+        self._image = QImage(1920, 1080, QImage.Format_RGB32)
+        self._image.fill(Qt.darkGray)
+
+        self.projection = PositionerProjection()
+        self.target_offset = None
+
+        # Calibration: Mapping destination (rectified/physical) to source (camera pixels)
+        self.projection.calibrate(
+physical_pts=[(825, 525), (1725, 525), (825, 1650), (1725, 1650)],
+            camera_pts=[(742, 525), (1798, 521), (847, 1558), (1682, 1558)]
+        )
+
+    def update_display(self, positioners_dict, selected_pid=None):
+        self._selected_pid = selected_pid
+        self.update()
 
     @Slot(object)
     def update_frame(self, frame):
         self._frame = frame.copy() if hasattr(frame, "copy") else frame
         self._image = self._frame_to_qimage(self._frame)
         self.update()
-        # print("CameraWidget: Frame updated and widget repainted")
+
+    def _normalize_for_positioner(self, angle_deg):
+        adjusted = float(angle_deg)
+        while adjusted < -10.0:
+            adjusted += 360.0
+        while adjusted > 370.0:
+            adjusted -= 360.0
+        return adjusted
+
+    def mousePressEvent(self, event):
+        if event.button() != Qt.LeftButton or self._image is None:
+            return
+
+        click = event.position()
+        available = self.rect().adjusted(8, 8, -8, -8)
+        scaled = self._image.scaled(available.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        x = available.x() + (available.width() - scaled.width()) // 2
+        y = available.y() + (available.height() - scaled.height()) // 2
+
+        # 1. Map widget click to raw image pixels
+        scale_x = scaled.width() / self._image.width()
+        scale_y = scaled.height() / self._image.height()
+        
+        raw_pixel_x = (click.x() - x) / scale_x
+        raw_pixel_y = (click.y() - y) / scale_y
+
+        # 2. Map raw pixels to destination coordinates
+        dest_x, dest_y = self.projection.camera_to_physical(raw_pixel_x, raw_pixel_y)
+
+        # 3. Apply the offset to get actual physical mm relative to the positioner center
+        # We previously translated the painter by (1275, 1087), so we subtract it here.
+        phys_x = dest_x - 1275
+        phys_y = dest_y - 1087
+
+        self.target_offset = (phys_x, phys_y)
+
+        # 4. Calculate IK
+        solutions = solve_inverse_kinematics(phys_x, phys_y, SHORT_ARM_LENGTH, LONG_ARM_LENGTH)
+        if solutions:
+            alpha_1, beta_1 = solutions[0]
+            alpha_1 = self._normalize_for_positioner(alpha_1)
+            beta_1 = self._normalize_for_positioner(beta_1)
+            print(f"IK was calculated for position ({phys_x:.2f}, {phys_y:.2f}) -> alpha: {alpha_1:.2f}, beta: {beta_1:.2f}")
+            if self._selected_pid is not None:
+                print(f"Emitting move_requested for PID {self._selected_pid} with alpha={alpha_1:.2f}, beta={beta_1:.2f}")
+                self.move_requested.emit(self._selected_pid, alpha_1, beta_1)
+            else:
+                print("No positioner selected in UI, so 'move_requested' signal was not emitted.")
+        else:
+            print(f"No IK solution for physical point: {phys_x:.2f}, {phys_y:.2f} (Dest: {dest_x:.2f}, {dest_y:.2f})")
+
+        self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.fillRect(self.rect(), Qt.black)
         painter.setRenderHint(QPainter.SmoothPixmapTransform)
+        painter.setRenderHint(QPainter.Antialiasing)
 
         if self._image is None:
             painter.setPen(Qt.white)
@@ -37,6 +114,52 @@ class CameraWidget(QWidget):
         x = available.x() + (available.width() - scaled.width()) // 2
         y = available.y() + (available.height() - scaled.height()) // 2
         painter.drawImage(QPoint(x, y), scaled)
+
+        # Draw the projected annulus overlay
+        if self.projection.is_calibrated:
+            painter.save()
+
+            # Transform from physical space -> raw camera pixels
+            t_proj = self.projection.get_qtransform()
+            
+            # Transform from raw camera pixels -> scaled widget space
+            scale_x = scaled.width() / self._image.width()
+            scale_y = scaled.height() / self._image.height()
+            
+            t_base = QTransform()
+            t_base.translate(x, y)
+            t_base.scale(scale_x, scale_y)
+            
+            # Combine transforms (right multiply applies t_proj first, then t_base)
+            painter.setTransform(t_proj * t_base)
+
+            # Move origin to the center of the provided destination coordinates so the annulus is visible
+            painter.translate(1275, 1087)
+
+            # Draw the workspace boundaries
+            pen = QPen(Qt.green)
+            pen.setWidthF(0.5) # Thin line in physical space
+            pen.setCosmetic(True) # Line width remains constant regardless of transform
+            painter.setPen(pen)
+
+            inner_radius = abs(SHORT_ARM_LENGTH - LONG_ARM_LENGTH)
+            outer_radius = SHORT_ARM_LENGTH + LONG_ARM_LENGTH
+
+            path = QPainterPath()
+            path.addEllipse(QPointF(0, 0), outer_radius, outer_radius)
+            path.addEllipse(QPointF(0, 0), inner_radius, inner_radius)
+            
+            painter.setBrush(QColor(0, 255, 0, 50)) # Semi-transparent green
+            painter.drawPath(path)
+
+            # Draw target point if exists
+            if self.target_offset is not None:
+                pen.setColor(Qt.red)
+                painter.setPen(pen)
+                painter.setBrush(Qt.red)
+                painter.drawEllipse(QPointF(self.target_offset[0], self.target_offset[1]), 1.5, 1.5)
+
+            painter.restore()
 
     def _frame_to_qimage(self, frame):
         if frame is None:
