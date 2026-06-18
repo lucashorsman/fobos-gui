@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import math
-from PySide6.QtCore import QPoint, QPointF, Qt, Slot, Signal
-from PySide6.QtGui import QImage, QPainter, QTransform, QPen, QPainterPath, QColor
+from PySide6.QtCore import QPoint, QPointF, Qt, Slot, Signal, QRectF
+from PySide6.QtGui import QImage, QPainter, QTransform, QPen, QPainterPath, QColor   
 from PySide6.QtWidgets import QWidget
 
 from helpers.constants import SHORT_ARM_LENGTH, LONG_ARM_LENGTH
@@ -32,11 +32,12 @@ class CameraWidget(QWidget):
 
         # Calibration: Mapping destination (rectified/physical) to source (camera pixels)
         self.projection.calibrate(
-physical_pts=[(825, 525), (1725, 525), (825, 1650), (1725, 1650)],
+            physical_pts=[(825, 525), (1725, 525), (825, 1650), (1725, 1650)],
             camera_pts=[(742, 525), (1798, 521), (847, 1558), (1682, 1558)]
         )
 
     def update_display(self, positioners_dict, selected_pid=None):
+        self._positioners_dict = positioners_dict
         self._selected_pid = selected_pid
         self.update()
 
@@ -76,8 +77,13 @@ physical_pts=[(825, 525), (1725, 525), (825, 1650), (1725, 1650)],
 
         # 3. Apply the offset to get actual physical mm relative to the positioner center
         # We previously translated the painter by (1275, 1087), so we subtract it here.
-        phys_x = dest_x - 1275
-        phys_y = dest_y - 1087
+        if hasattr(self, '_positioners_dict') and self._selected_pid in self._positioners_dict:
+            cx, cy = self._positioners_dict[self._selected_pid].get("center", (0.0, 0.0))
+        else:
+            cx, cy = 0.0, 0.0
+
+        phys_x = dest_x - (1275 + cx)
+        phys_y = dest_y - (1087 + cy)
 
         self.target_offset = (phys_x, phys_y)
 
@@ -133,31 +139,64 @@ physical_pts=[(825, 525), (1725, 525), (825, 1650), (1725, 1650)],
             # Combine transforms (right multiply applies t_proj first, then t_base)
             painter.setTransform(t_proj * t_base)
 
-            # Move origin to the center of the provided destination coordinates so the annulus is visible
+            # Move origin to the center of the provided destination coordinates so the annulus grid is visible
             painter.translate(1275, 1087)
-
-            # Draw the workspace boundaries
-            pen = QPen(Qt.green)
-            pen.setWidthF(0.5) # Thin line in physical space
-            pen.setCosmetic(True) # Line width remains constant regardless of transform
-            painter.setPen(pen)
 
             inner_radius = abs(SHORT_ARM_LENGTH - LONG_ARM_LENGTH)
             outer_radius = SHORT_ARM_LENGTH + LONG_ARM_LENGTH
 
-            path = QPainterPath()
-            path.addEllipse(QPointF(0, 0), outer_radius, outer_radius)
-            path.addEllipse(QPointF(0, 0), inner_radius, inner_radius)
-            
-            painter.setBrush(QColor(0, 255, 0, 50)) # Semi-transparent green
-            painter.drawPath(path)
+            positioner_items = self._positioners_dict.items() if hasattr(self, '_positioners_dict') else []
+            for pid, p_info in positioner_items:
+                cx, cy = p_info.get("center", (0.0, 0.0))
+                painter.save()
+                painter.translate(cx, cy)
 
-            # Draw target point if exists
-            if self.target_offset is not None:
-                pen.setColor(Qt.red)
-                painter.setPen(pen)
-                painter.setBrush(Qt.red)
-                painter.drawEllipse(QPointF(self.target_offset[0], self.target_offset[1]), 1.5, 1.5)
+                is_selected = (pid == self._selected_pid)
+
+                if is_selected:
+                    pen = QPen(Qt.green)
+                    pen.setWidthF(0.5) # Thin line in physical space
+                    pen.setCosmetic(True) # Line width remains constant regardless of transform
+                    painter.setPen(pen)
+
+                    path = QPainterPath()
+                    path.addEllipse(QPointF(0, 0), outer_radius, outer_radius)
+                    path.addEllipse(QPointF(0, 0), inner_radius, inner_radius)
+                    
+                    painter.setBrush(QColor(0, 255, 0, 50)) # Semi-transparent green
+                    painter.drawPath(path)
+                else:
+                    pen = QPen(QColor(0, 150, 0, 100)) # Faint green
+                    pen.setWidthF(0.5)
+                    pen.setCosmetic(True)
+                    painter.setPen(pen)
+                    painter.setBrush(Qt.NoBrush)
+
+                    painter.drawEllipse(QPointF(0, 0), inner_radius, inner_radius)
+                    painter.drawEllipse(QPointF(0, 0), outer_radius, outer_radius)
+
+                # Draw positioner ID text
+                font = painter.font()
+                font.setPixelSize(40) # 40mm tall in physical space
+                painter.setFont(font)
+                
+                if is_selected:
+                    painter.setPen(Qt.white)
+                else:
+                    painter.setPen(QColor(200, 200, 200, 150))
+                    
+                rect = QRectF(-50, -50, 100, 100)
+                painter.drawText(rect, Qt.AlignCenter, str(pid))
+
+                # Draw target point if exists and is selected
+                if is_selected and self.target_offset is not None:
+                    pen = QPen(Qt.red)
+                    pen.setCosmetic(True)
+                    painter.setPen(pen)
+                    painter.setBrush(Qt.red)
+                    painter.drawEllipse(QPointF(self.target_offset[0], self.target_offset[1]), 1.5, 1.5)
+
+                painter.restore()
 
             painter.restore()
 

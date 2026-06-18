@@ -14,12 +14,13 @@ class AppModel(QObject):
         self.selected_positioner_id = None
         # {id: {"alpha": 0.0, "beta": 0.0, "state": "ready"}}
 
-    def register_positioner(self, positioner_id: int):
+    def register_positioner(self, positioner_id: int, center=(0.0, 0.0)):
         if positioner_id not in self.positioners:
             self.positioners[positioner_id] = {
                 "alpha": 0.0,
                 "beta": 0.0,
-                "state": "ready"
+                "state": "ready",
+                "center": center # we may need to find a way to also inscribe this to the FPS object.
             }
             if self.selected_positioner_id is None:
                 self.selected_positioner_id = positioner_id

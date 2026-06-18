@@ -106,8 +106,9 @@ class MainWindow(QMainWindow):
 
     def on_fps_ready(self, fps):
         # Discover all connected positioners
-        for pid in list(fps.positioners.keys()):
-            self.model.register_positioner(pid)
+        for pid, pos in fps.positioners.items():
+            center = getattr(pos, 'center', (0.0, 0.0))
+            self.model.register_positioner(pid, center=center)
             
             worker = PositionerWorker(fps, self.poller._loop, positioner_id=pid)
             
