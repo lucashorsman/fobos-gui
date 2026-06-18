@@ -9,7 +9,7 @@ class MockPositioner:
         self.center = center
 
 class MockFPS:
-    def __init__(self, num_positioners=1600):
+    def __init__(self, num_positioners=5):
         self.positioners = {}
         # Create dummy positioners in a grid layout
         cols = int(num_positioners ** 0.5) or 1

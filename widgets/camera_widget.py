@@ -31,9 +31,10 @@ class CameraWidget(QWidget):
         self.target_offset = None
 
         # Calibration: Mapping destination (rectified/physical) to source (camera pixels)
+        # Using highly distorted camera points (a steep trapezoid) to test the projection warp!
         self.projection.calibrate(
             physical_pts=[(825, 525), (1725, 525), (825, 1650), (1725, 1650)],
-            camera_pts=[(742, 525), (1798, 521), (847, 1558), (1682, 1558)]
+            camera_pts=[(800, 300), (1100, 300), (200, 900), (1700, 900)]
         )
 
     def update_display(self, positioners_dict, selected_pid=None):
