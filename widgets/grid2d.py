@@ -1,3 +1,6 @@
+from widgets.pan_zoom_mixin import PanZoomMixin
+from helpers.drawing import draw_positioner
+from helpers.geometry import get_clicked_positioner
 import math
 import sys
 
@@ -7,8 +10,6 @@ from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 
 from helpers.annulus import solve_inverse_kinematics
 from helpers.constants import SHORT_ARM_LENGTH, LONG_ARM_LENGTH
-from helpers.drawing import draw_positioner
-from widgets.pan_zoom_mixin import PanZoomMixin
 
 class Grid2d(QWidget, PanZoomMixin):
     move_requested = Signal(int, float, float)
@@ -45,19 +46,25 @@ class Grid2d(QWidget, PanZoomMixin):
         if event.button() == Qt.MouseButton.LeftButton:
             phys_x, phys_y = self.get_physical_click_coords(event)
             
-            closest_pid = None
-            min_dist = float('inf')
-            outer_radius = SHORT_ARM_LENGTH + LONG_ARM_LENGTH
+            closest_pid = get_clicked_positioner(phys_x, phys_y, self.positioners_dict, self._selected_pid)
+            
+            if closest_pid is None:
+                return
 
-            for pid, pos in self.positioners_dict.items():
-                cx, cy = pos.get('center', (0.0, 0.0))
-                dist = math.hypot(phys_x - cx, phys_y - cy)
-                if dist <= outer_radius and dist < min_dist:
-                    min_dist = dist
-                    closest_pid = pid
-
-            if closest_pid is not None:
+            #if pid swapped, then dont move arms
+            if closest_pid is not None and closest_pid != self._selected_pid:
+                print(f"Selected PID {closest_pid}")
                 self.selection_changed.emit(closest_pid)
+                return 
+            
+            cx, cy = self.positioners_dict[closest_pid].get('center', (0.0, 0.0))
+            rel_x = phys_x - cx
+            rel_y = phys_y - cy
+            
+            solutions = solve_inverse_kinematics(rel_x, rel_y, SHORT_ARM_LENGTH, LONG_ARM_LENGTH)
+            if solutions:
+                alpha_1, beta_1 = solutions[0]
+                self.move_requested.emit(closest_pid, alpha_1, beta_1)
 
     def mouseMoveEvent(self, event):
         if self.do_pan(event):

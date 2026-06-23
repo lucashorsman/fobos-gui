@@ -76,6 +76,7 @@ class MainWindow(QMainWindow):
         self.camera_widget.move_requested.connect(self.on_move_requested)
         self.control_panel.selection_changed.connect(self.model.set_selected_positioner)
         self.view2D.selection_changed.connect(self.model.set_selected_positioner)
+        self.camera_widget.selection_changed.connect(self.model.set_selected_positioner)
         
         self.poller = None
         self.vimba_worker = None

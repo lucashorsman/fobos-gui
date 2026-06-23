@@ -11,11 +11,13 @@ from helpers.constants import SHORT_ARM_LENGTH, LONG_ARM_LENGTH
 from helpers.annulus import solve_inverse_kinematics
 from helpers.projection import PositionerProjection
 from helpers.drawing import draw_positioner
+from helpers.geometry import get_clicked_positioner
 from widgets.pan_zoom_mixin import PanZoomMixin
 
 
 class CameraWidget(QWidget, PanZoomMixin):
     move_requested = Signal(int, float, float)
+    selection_changed = Signal(int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -88,32 +90,33 @@ class CameraWidget(QWidget, PanZoomMixin):
         raw_pixel_x, raw_pixel_y = self.get_physical_click_coords(event)
         dest_x, dest_y = self.projection.camera_to_physical(raw_pixel_x, raw_pixel_y)
 
-        # 3. Apply the offset to get actual physical mm relative to the positioner center
-        # We previously translated the painter by (1275, 1087), so we subtract it here.
-        if hasattr(self, '_positioners_dict') and self._selected_pid in self._positioners_dict:
-            cx, cy = self._positioners_dict[self._selected_pid].get("center", (0.0, 0.0))
-        else:
-            cx, cy = 0.0, 0.0
+        # Convert destination physical space to grid space (we translate painter by 1275, 1087)
+        grid_x = dest_x - 1275
+        grid_y = dest_y - 1087
 
-        phys_x = dest_x - (1275 + cx)
-        phys_y = dest_y - (1087 + cy)
+        positioners_dict = getattr(self, '_positioners_dict', {})
+        closest_pid = get_clicked_positioner(grid_x, grid_y, positioners_dict, self._selected_pid)
 
-        self.target_offset = (phys_x, phys_y)
+        if closest_pid is None:
+            return
 
-        # 4. Calculate IK
-        solutions = solve_inverse_kinematics(phys_x, phys_y, SHORT_ARM_LENGTH, LONG_ARM_LENGTH)
+        if closest_pid is not None and closest_pid != self._selected_pid:
+            self.selection_changed.emit(closest_pid)
+            return
+
+        cx, cy = self._positioners_dict[closest_pid].get("center", (0.0, 0.0))
+        rel_x = grid_x - cx
+        rel_y = grid_y - cy
+
+        self.target_offset = (rel_x, rel_y)
+
+        # Calculate IK
+        solutions = solve_inverse_kinematics(rel_x, rel_y, SHORT_ARM_LENGTH, LONG_ARM_LENGTH)
         if solutions:
             alpha_1, beta_1 = solutions[0]
             alpha_1 = self._normalize_for_positioner(alpha_1)
             beta_1 = self._normalize_for_positioner(beta_1)
-            print(f"IK was calculated for position ({phys_x:.2f}, {phys_y:.2f}) -> alpha: {alpha_1:.2f}, beta: {beta_1:.2f}")
-            if self._selected_pid is not None:
-                print(f"Emitting move_requested for PID {self._selected_pid} with alpha={alpha_1:.2f}, beta={beta_1:.2f}")
-                self.move_requested.emit(self._selected_pid, alpha_1, beta_1)
-            else:
-                print("No positioner selected in UI, so 'move_requested' signal was not emitted.")
-        else:
-            print(f"No IK solution for physical point: {phys_x:.2f}, {phys_y:.2f} (Dest: {dest_x:.2f}, {dest_y:.2f})")
+            self.move_requested.emit(closest_pid, alpha_1, beta_1)
 
         self.update()
       
