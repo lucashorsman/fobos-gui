@@ -1,5 +1,5 @@
 from widgets.pan_zoom_mixin import PanZoomMixin
-from helpers.drawing import draw_positioner
+from helpers.drawing import draw_positioner, draw_coordinate_grid
 from helpers.geometry import get_clicked_positioner
 import math
 import sys
@@ -84,6 +84,12 @@ class Grid2d(QWidget, PanZoomMixin):
         painter.save()
         painter.translate(self._offset)
         painter.scale(self._scale, self._scale)
+
+        # Calculate visible rect in physical coordinates
+        inverse_transform, invertible = painter.transform().inverted()
+        if invertible:
+            visible_rect = inverse_transform.mapRect(QRectF(self.rect()))
+            draw_coordinate_grid(painter, visible_rect, spacing=100.0)
 
         for pid, pos in self.positioners_dict.items():
             is_selected = (pid == self._selected_pid)

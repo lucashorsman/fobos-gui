@@ -10,7 +10,7 @@ from PySide6.QtWidgets import QWidget
 from helpers.constants import SHORT_ARM_LENGTH, LONG_ARM_LENGTH
 from helpers.annulus import solve_inverse_kinematics
 from helpers.projection import PositionerProjection
-from helpers.drawing import draw_positioner
+from helpers.drawing import draw_positioner, draw_coordinate_grid
 from helpers.geometry import get_clicked_positioner
 from widgets.pan_zoom_mixin import PanZoomMixin
 
@@ -38,9 +38,14 @@ class CameraWidget(QWidget, PanZoomMixin):
 
         # Calibration: Mapping destination (rectified/physical) to source (camera pixels)
         # Using highly distorted camera points (a steep trapezoid) to test the projection warp!
+        # self.projection.calibrate(
+        #     physical_pts=[(825, 525), (1725, 525), (825, 1650), (1725, 1650)],
+        #     camera_pts=[(800, 300), (1100, 300), (200, 900), (1700, 900)]
+        # )
+        #less insane projection from jchen
         self.projection.calibrate(
-            physical_pts=[(825, 525), (1725, 525), (825, 1650), (1725, 1650)],
-            camera_pts=[(800, 300), (1100, 300), (200, 900), (1700, 900)]
+        physical_pts=[(825, 525), (1725, 525), (825, 1650), (1725, 1650)],
+        camera_pts=[(825, 525), (1725, 525), (825, 1650), (1725, 1650)]
         )
 
 
@@ -50,10 +55,7 @@ class CameraWidget(QWidget, PanZoomMixin):
         w_ratio = self.width() / self._image.width()
         h_ratio = self.height() / self._image.height()
         self._scale = min(w_ratio, h_ratio)
-        self._offset = QPointF(
-            (self.width() - self._image.width() * self._scale) / 2,
-            (self.height() - self._image.height() * self._scale) / 2,
-        )
+        self._offset = QPointF(self.width() / 2, self.height() / 2)
         self.update()
 
     def update_display(self, positioners_dict, selected_pid=None):
@@ -91,8 +93,9 @@ class CameraWidget(QWidget, PanZoomMixin):
         dest_x, dest_y = self.projection.camera_to_physical(raw_pixel_x, raw_pixel_y)
 
         # Convert destination physical space to grid space (we translate painter by 1275, 1087)
-        grid_x = dest_x - 1275
-        grid_y = dest_y - 1087
+        # grid_x = dest_x - 1275
+        # grid_y = dest_y - 1087
+        grid_x, grid_y = dest_x, dest_y
 
         positioners_dict = getattr(self, '_positioners_dict', {})
         closest_pid = get_clicked_positioner(grid_x, grid_y, positioners_dict, self._selected_pid)
@@ -145,7 +148,7 @@ class CameraWidget(QWidget, PanZoomMixin):
         painter.save()
         painter.translate(self._offset)
         painter.scale(self._scale, self._scale)
-        painter.drawImage(QPointF(0, 0), self._image)
+        painter.drawImage(QPointF(-self._image.width() / 2, -self._image.height() / 2), self._image)
         painter.restore()
 
         # Draw the projected annulus overlay
@@ -163,8 +166,13 @@ class CameraWidget(QWidget, PanZoomMixin):
             # Combine transforms (right multiply applies t_proj first, then t_base)
             painter.setTransform(t_proj * t_base)
 
-            # Move origin to the center of the provided destination coordinates so the annulus grid is visible
-            painter.translate(1275, 1087)
+            # painter.translate(1275, 1087)
+
+            # Calculate visible rect in physical coordinates
+            inverse_transform, invertible = painter.transform().inverted()
+            if invertible:
+                visible_rect = inverse_transform.mapRect(QRectF(self.rect()))
+                draw_coordinate_grid(painter, visible_rect, spacing=100.0)
 
             positioner_items = self._positioners_dict.items() if hasattr(self, '_positioners_dict') else []
             for pid, p_info in positioner_items:

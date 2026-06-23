@@ -50,22 +50,25 @@ class MainWindow(QMainWindow):
         # """)
         self.setStyleSheet(qdarkstyle.load_stylesheet())
         # create the right-side vertical splitter for Status and Control
-        right_splitter = QSplitter(Qt.Orientation.Vertical)
-        right_splitter.addWidget(self.status_bar)
-        right_splitter.addWidget(self.control_panel)
-        # create the main horizontal splitter to separate View2D and the right side
-        main_splitter = QSplitter(Qt.Orientation.Horizontal)
-        main_splitter.addWidget(self.grid2D)
-        main_splitter.addWidget(self.camera_widget)
-        main_splitter.addWidget(right_splitter)  # Nest the right splitter inside the main one
+        self.right_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.right_splitter.addWidget(self.status_bar)
+        self.right_splitter.addWidget(self.camera_widget)
+        self.right_splitter.addWidget(self.control_panel)
+        
+        # create the main horizontal splitter
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.main_splitter.addWidget(self.grid2D)
+        self.main_splitter.addWidget(self.right_splitter)
+        
         # Set custom proportions
-        # Gives 70% width to View2D and 30% to the right side initially
-        main_splitter.setSizes([520, 520, 240]) 
-        # Gives 30% height to Status Bar and 70% to Control Panel initially
-        right_splitter.setSizes([180, 420])
+        self.main_splitter.setSizes([700, 300]) 
+        self.right_splitter.setSizes([180, 420, 420])
         
         # Set the main splitter as the central widget
-        self.setCentralWidget(main_splitter)
+        self.setCentralWidget(self.main_splitter)
+        
+        self.current_main_view = self.grid2D
+        self.current_small_view = self.camera_widget
 
         self.model = AppModel()
         
@@ -77,6 +80,7 @@ class MainWindow(QMainWindow):
         self.control_panel.selection_changed.connect(self.model.set_selected_positioner)
         self.grid2D.selection_changed.connect(self.model.set_selected_positioner)
         self.camera_widget.selection_changed.connect(self.model.set_selected_positioner)
+        self.control_panel.swap_views_requested.connect(self.on_swap_views_requested)
         
         self.poller = None
         self.vimba_worker = None
@@ -107,6 +111,30 @@ class MainWindow(QMainWindow):
             alpha = self._normalize_for_positioner(alpha)
             beta = self._normalize_for_positioner(beta)
             self.workers[pid].request_move(alpha, beta)
+
+    def on_swap_views_requested(self):
+        view_main = self.current_main_view
+        view_small = self.current_small_view
+        
+        idx_main = self.main_splitter.indexOf(view_main)
+        idx_small = self.right_splitter.indexOf(view_small)
+
+        # Use a dummy widget to hold the spot in right_splitter
+        dummy = QWidget()
+        self.right_splitter.replaceWidget(idx_small, dummy)
+        
+        # Now view_small is detached. Replace view_main with view_small
+        self.main_splitter.replaceWidget(idx_main, view_small)
+        
+        # Now view_main is detached. Replace dummy with view_main
+        self.right_splitter.replaceWidget(idx_small, view_main)
+        
+        # Clean up dummy widget
+        dummy.deleteLater()
+        
+        # Update references
+        self.current_main_view = view_small
+        self.current_small_view = view_main
 
     def on_fps_ready(self, fps):
         # Discover all connected positioners

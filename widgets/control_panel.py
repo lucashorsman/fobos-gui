@@ -7,6 +7,7 @@ class ControlPanel(QWidget):
     # Emits positioner_id, alpha, beta
     move_requested = Signal(int, float, float)
     selection_changed = Signal(int)
+    swap_views_requested = Signal()
 
     def __init__(self):
         super().__init__()
@@ -47,6 +48,11 @@ class ControlPanel(QWidget):
         self.go_button = QPushButton("Go To")
         self.go_button.clicked.connect(self._on_go_clicked)
         layout.addWidget(self.go_button)
+
+        # Swap Views button
+        self.swap_button = QPushButton("Swap Views")
+        self.swap_button.clicked.connect(self.swap_views_requested.emit)
+        layout.addWidget(self.swap_button)
 
     def update_positioners(self, pids):
         current_pid = self.pid_combo.currentText()

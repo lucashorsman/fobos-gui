@@ -71,3 +71,35 @@ def draw_positioner(painter, pid, pos_info, is_selected, draw_arms=True):
     painter.drawText(rect, Qt.AlignCenter, str(pid))
 
     painter.restore()
+
+def draw_coordinate_grid(painter, rect, spacing=100.0):
+    """
+    Draws a coordinate grid within the given physical rectangle.
+    rect: QRectF indicating the visible physical bounds.
+    spacing: Distance between grid lines.
+    """
+    painter.save()
+    
+    start_x = math.floor(rect.left() / spacing)
+    end_x = math.ceil(rect.right() / spacing)
+    start_y = math.floor(rect.top() / spacing)
+    end_y = math.ceil(rect.bottom() / spacing)
+
+    grid_pen = QPen(QColor(255, 255, 255, 40))
+    grid_pen.setCosmetic(True)
+    
+    axis_pen = QPen(QColor(255, 255, 255, 120))
+    axis_pen.setWidthF(2.0)
+    axis_pen.setCosmetic(True)
+
+    for i in range(start_x, end_x + 1):
+        x = i * spacing
+        painter.setPen(axis_pen if i == 0 else grid_pen)
+        painter.drawLine(QPointF(x, rect.top()), QPointF(x, rect.bottom()))
+
+    for i in range(start_y, end_y + 1):
+        y = i * spacing
+        painter.setPen(axis_pen if i == 0 else grid_pen)
+        painter.drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y))
+        
+    painter.restore()
