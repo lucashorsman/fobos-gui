@@ -10,22 +10,21 @@ from PySide6.QtWidgets import QWidget
 from helpers.constants import SHORT_ARM_LENGTH, LONG_ARM_LENGTH
 from helpers.annulus import solve_inverse_kinematics
 from helpers.projection import PositionerProjection
+from helpers.drawing import draw_positioner
+from widgets.pan_zoom_mixin import PanZoomMixin
 
 
-class CameraWidget(QWidget):
+class CameraWidget(QWidget, PanZoomMixin):
     move_requested = Signal(int, float, float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.init_pan_zoom()
         self._frame = None
         self._image = None
         self._selected_pid = None
         self.setMinimumSize(400, 300)
         self.setWindowTitle("Camera View")
-        self._scale = 1.0
-        self._offset = QPointF(0, 0)
-        self._pan_start = None
-        self._pan_offset_start = None
         self.setMouseTracking(True)
         self.first_frame = True  # Flag to indicate if the first frame has been received
         # Create a placeholder image so the overlay can be tested without a real camera
@@ -80,17 +79,13 @@ class CameraWidget(QWidget):
         return adjusted
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.RightButton:
-            self._pan_start = QPointF(event.position())
-            self._pan_offset_start = QPointF(self._offset)
+        if self.start_pan(event):
             return
 
         if event.button() != Qt.LeftButton or self._image is None:
             return
 
-        click = event.position()
-        raw_pixel_x = (click.x() - self._offset.x()) / self._scale
-        raw_pixel_y = (click.y() - self._offset.y()) / self._scale
+        raw_pixel_x, raw_pixel_y = self.get_physical_click_coords(event)
         dest_x, dest_y = self.projection.camera_to_physical(raw_pixel_x, raw_pixel_y)
 
         # 3. Apply the offset to get actual physical mm relative to the positioner center
@@ -123,32 +118,15 @@ class CameraWidget(QWidget):
         self.update()
       
     def wheelEvent(self, event):
-        delta = event.angleDelta().y()
-        factor = 1.15 if delta > 0 else 1 / 1.15
-
-        # zoom toward cursor position
-        cursor_pos = QPointF(event.position())
-        # point in image space before scale change
-        img_point = (cursor_pos - self._offset) / self._scale
-
-        self._scale *= factor
-        self._scale = max(0.1, min(self._scale, 20.0))
-
-        # adjust offset so img_point stays under cursor
-        self._offset = cursor_pos - img_point * self._scale
+        self.apply_wheel_zoom(event)
         self.update()
 
-
-
     def mouseMoveEvent(self, event):
-        if self._pan_start is not None:
-            delta = QPointF(event.position()) - self._pan_start
-            self._offset = self._pan_offset_start + delta
+        if self.do_pan(event):
             self.update()
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.MouseButton.RightButton:
-            self._pan_start = None
+        self.end_pan(event)
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -185,61 +163,21 @@ class CameraWidget(QWidget):
             # Move origin to the center of the provided destination coordinates so the annulus grid is visible
             painter.translate(1275, 1087)
 
-            inner_radius = abs(SHORT_ARM_LENGTH - LONG_ARM_LENGTH)
-            outer_radius = SHORT_ARM_LENGTH + LONG_ARM_LENGTH
-
             positioner_items = self._positioners_dict.items() if hasattr(self, '_positioners_dict') else []
             for pid, p_info in positioner_items:
-                cx, cy = p_info.get("center", (0.0, 0.0))
-                painter.save()
-                painter.translate(cx, cy)
-
                 is_selected = (pid == self._selected_pid)
+                draw_positioner(painter, pid, p_info, is_selected, draw_arms=True)
 
-                if is_selected:
-                    pen = QPen(Qt.green)
-                    pen.setWidthF(0.5) # Thin line in physical space
-                    pen.setCosmetic(True) # Line width remains constant regardless of transform
-                    painter.setPen(pen)
-
-                    path = QPainterPath()
-                    path.addEllipse(QPointF(0, 0), outer_radius, outer_radius)
-                    path.addEllipse(QPointF(0, 0), inner_radius, inner_radius)
-                    
-                    painter.setBrush(QColor(0, 255, 0, 50)) # Semi-transparent green
-                    painter.drawPath(path)
-                else:
-                    pen = QPen(QColor(0, 150, 0, 100)) # Faint green
-                    pen.setWidthF(0.5)
-                    pen.setCosmetic(True)
-                    painter.setPen(pen)
-                    painter.setBrush(Qt.NoBrush)
-
-                    painter.drawEllipse(QPointF(0, 0), inner_radius, inner_radius)
-                    painter.drawEllipse(QPointF(0, 0), outer_radius, outer_radius)
-
-                # Draw positioner ID text
-                font = painter.font()
-                font.setPixelSize(40) # 40mm tall in physical space
-                painter.setFont(font)
-                
-                if is_selected:
-                    painter.setPen(Qt.white)
-                else:
-                    painter.setPen(QColor(200, 200, 200, 150))
-                    
-                rect = QRectF(-50, -50, 100, 100)
-                painter.drawText(rect, Qt.AlignCenter, str(pid))
-
-                # Draw target point if exists and is selected
                 if is_selected and self.target_offset is not None:
+                    painter.save()
+                    cx, cy = p_info.get("center", (0.0, 0.0))
+                    painter.translate(cx, cy)
                     pen = QPen(Qt.red)
                     pen.setCosmetic(True)
                     painter.setPen(pen)
                     painter.setBrush(Qt.red)
                     painter.drawEllipse(QPointF(self.target_offset[0], self.target_offset[1]), 1.5, 1.5)
-
-                painter.restore()
+                    painter.restore()
 
             painter.restore()
 

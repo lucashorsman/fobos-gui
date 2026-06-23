@@ -1,0 +1,73 @@
+import math
+from PySide6.QtCore import QPointF, Qt, QRectF
+from PySide6.QtGui import QPen, QColor, QPainterPath
+from helpers.constants import SHORT_ARM_LENGTH, LONG_ARM_LENGTH
+
+def draw_positioner(painter, pid, pos_info, is_selected, draw_arms=True):
+    inner_radius = abs(SHORT_ARM_LENGTH - LONG_ARM_LENGTH)
+    outer_radius = SHORT_ARM_LENGTH + LONG_ARM_LENGTH
+
+    cx, cy = pos_info.get('center', (0.0, 0.0))
+    
+    painter.save()
+    painter.translate(cx, cy)
+
+    if is_selected:
+        pen = QPen(Qt.green)
+        pen.setWidthF(0.5)
+        pen.setCosmetic(True)
+        painter.setPen(pen)
+
+        path = QPainterPath()
+        path.addEllipse(QPointF(0, 0), outer_radius, outer_radius)
+        path.addEllipse(QPointF(0, 0), inner_radius, inner_radius)
+        painter.setBrush(QColor(0, 255, 0, 50))
+        painter.drawPath(path)
+    else:
+        pen = QPen(QColor(0, 150, 0, 100))
+        pen.setWidthF(0.5)
+        pen.setCosmetic(True)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+
+        painter.drawEllipse(QPointF(0, 0), inner_radius, inner_radius)
+        painter.drawEllipse(QPointF(0, 0), outer_radius, outer_radius)
+
+    if draw_arms:
+        alpha_deg = pos_info.get('alpha', 0.0)
+        beta_deg = pos_info.get('beta', 0.0)
+        
+        alpha_rad = math.radians(alpha_deg)
+        beta_rad = math.radians(alpha_deg + beta_deg) 
+        
+        joint_x = SHORT_ARM_LENGTH * math.cos(alpha_rad)
+        joint_y = SHORT_ARM_LENGTH * math.sin(alpha_rad)
+        
+        end_x = joint_x + LONG_ARM_LENGTH * math.cos(beta_rad)
+        end_y = joint_y + LONG_ARM_LENGTH * math.sin(beta_rad)
+        
+        arm_pen = QPen(Qt.yellow if is_selected else Qt.gray)
+        arm_pen.setWidthF(1.0)
+        arm_pen.setCosmetic(True)
+        painter.setPen(arm_pen)
+        
+        painter.drawLine(QPointF(0, 0), QPointF(joint_x, joint_y))
+        painter.drawLine(QPointF(joint_x, joint_y), QPointF(end_x, end_y))
+
+    # Draw center point
+    painter.setPen(Qt.white)
+    painter.setBrush(Qt.white)
+    painter.drawEllipse(QPointF(0, 0), 2, 2)
+
+    # Draw PID text
+    font = painter.font()
+    font.setPixelSize(40)
+    painter.setFont(font)
+    if is_selected:
+        painter.setPen(Qt.white)
+    else:
+        painter.setPen(QColor(200, 200, 200, 150))
+    rect = QRectF(-50, -50, 100, 100)
+    painter.drawText(rect, Qt.AlignCenter, str(pid))
+
+    painter.restore()

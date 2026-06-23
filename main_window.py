@@ -1,4 +1,5 @@
 #assembles all widgets and components for the main window
+from widgets.grid2d import Grid2d
 from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter
 from app_model import AppModel
 from PySide6.QtCore import Qt
@@ -9,6 +10,7 @@ from widgets.camera_widget import CameraWidget
 from widgets.status_bar import StatusBar
 from widgets.control_panel import ControlPanel
 from widgets.view2D import View2D
+from widgets.grid2d import Grid2d
 import qdarkstyle
 
 class MainWindow(QMainWindow):
@@ -29,7 +31,7 @@ class MainWindow(QMainWindow):
         # Instantiate UI components
         self.status_bar = StatusBar()
         self.control_panel = ControlPanel()
-        self.view2D = View2D()
+        self.view2D = Grid2d()
         self.camera_widget = CameraWidget()
         #i guess we can use CSS
         # self.setStyleSheet("""
@@ -73,6 +75,7 @@ class MainWindow(QMainWindow):
         self.view2D.move_requested.connect(self.on_move_requested)
         self.camera_widget.move_requested.connect(self.on_move_requested)
         self.control_panel.selection_changed.connect(self.model.set_selected_positioner)
+        self.view2D.selection_changed.connect(self.model.set_selected_positioner)
         
         self.poller = None
         self.vimba_worker = None
