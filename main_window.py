@@ -31,7 +31,7 @@ class MainWindow(QMainWindow):
         # Instantiate UI components
         self.status_bar = StatusBar()
         self.control_panel = ControlPanel()
-        self.view2D = Grid2d()
+        self.grid2D = Grid2d()
         self.camera_widget = CameraWidget()
         #i guess we can use CSS
         # self.setStyleSheet("""
@@ -55,7 +55,7 @@ class MainWindow(QMainWindow):
         right_splitter.addWidget(self.control_panel)
         # create the main horizontal splitter to separate View2D and the right side
         main_splitter = QSplitter(Qt.Orientation.Horizontal)
-        main_splitter.addWidget(self.view2D)
+        main_splitter.addWidget(self.grid2D)
         main_splitter.addWidget(self.camera_widget)
         main_splitter.addWidget(right_splitter)  # Nest the right splitter inside the main one
         # Set custom proportions
@@ -72,10 +72,10 @@ class MainWindow(QMainWindow):
         # Wire up UI to model and actions
         self.model.model_updated.connect(self._on_model_updated)
         self.control_panel.move_requested.connect(self.on_move_requested)
-        self.view2D.move_requested.connect(self.on_move_requested)
+        self.grid2D.move_requested.connect(self.on_move_requested)
         self.camera_widget.move_requested.connect(self.on_move_requested)
         self.control_panel.selection_changed.connect(self.model.set_selected_positioner)
-        self.view2D.selection_changed.connect(self.model.set_selected_positioner)
+        self.grid2D.selection_changed.connect(self.model.set_selected_positioner)
         self.camera_widget.selection_changed.connect(self.model.set_selected_positioner)
         
         self.poller = None
@@ -98,7 +98,7 @@ class MainWindow(QMainWindow):
 
     def _on_model_updated(self): #called when the model emits model_updated, which happens whenever the positioners dict is updated with new positions or states
         self.status_bar.update_display(self.model.positioners)
-        self.view2D.update_display(self.model.positioners, self.model.selected_positioner_id)
+        self.grid2D.update_display(self.model.positioners, self.model.selected_positioner_id)
         self.camera_widget.update_display(self.model.positioners, self.model.selected_positioner_id)
         self.control_panel.update_selected_positioner(self.model.selected_positioner_id)
 
@@ -131,7 +131,7 @@ class MainWindow(QMainWindow):
             
         # Update dropdown
         self.control_panel.update_positioners(self.model.positioners.keys())
-        self.view2D.update_positioners(self.model.positioners.keys())
+        self.grid2D.update_positioners(self.model.positioners.keys())
             
         print(f"FPS initialized, {len(self.workers)} workers started")
         print(f"pids in use: {self.model.positioners.keys()}")
