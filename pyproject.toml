@@ -15,6 +15,7 @@ dependencies = [
     "astropy>=7.1",
     "scikit-image>=0.26",
     "matplotlib>=3.10",
+    "opencv-python",
 ]
 
 [tool.uv.sources]

@@ -22,7 +22,12 @@ class CameraWidget(QWidget):
         self._selected_pid = None
         self.setMinimumSize(400, 300)
         self.setWindowTitle("Camera View")
-
+        self._scale = 1.0
+        self._offset = QPointF(0, 0)
+        self._pan_start = None
+        self._pan_offset_start = None
+        self.setMouseTracking(True)
+        self.first_frame = True  # Flag to indicate if the first frame has been received
         # Create a placeholder image so the overlay can be tested without a real camera
         self._image = QImage(1920, 1080, QImage.Format_RGB32)
         self._image.fill(Qt.darkGray)
@@ -37,6 +42,19 @@ class CameraWidget(QWidget):
             camera_pts=[(800, 300), (1100, 300), (200, 900), (1700, 900)]
         )
 
+
+    def fit_to_view(self):
+        if self._image is None:
+            return
+        w_ratio = self.width() / self._image.width()
+        h_ratio = self.height() / self._image.height()
+        self._scale = min(w_ratio, h_ratio)
+        self._offset = QPointF(
+            (self.width() - self._image.width() * self._scale) / 2,
+            (self.height() - self._image.height() * self._scale) / 2,
+        )
+        self.update()
+
     def update_display(self, positioners_dict, selected_pid=None):
         self._positioners_dict = positioners_dict
         self._selected_pid = selected_pid
@@ -46,7 +64,12 @@ class CameraWidget(QWidget):
     def update_frame(self, frame):
         self._frame = frame.copy() if hasattr(frame, "copy") else frame
         self._image = self._frame_to_qimage(self._frame)
-        self.update()
+        if self.first_frame:
+            self.fit_to_view()
+            self.first_frame = False
+        else:
+            self.update()
+        
 
     def _normalize_for_positioner(self, angle_deg):
         adjusted = float(angle_deg)
@@ -57,23 +80,17 @@ class CameraWidget(QWidget):
         return adjusted
 
     def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.RightButton:
+            self._pan_start = QPointF(event.position())
+            self._pan_offset_start = QPointF(self._offset)
+            return
+
         if event.button() != Qt.LeftButton or self._image is None:
             return
 
         click = event.position()
-        available = self.rect().adjusted(8, 8, -8, -8)
-        scaled = self._image.scaled(available.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        x = available.x() + (available.width() - scaled.width()) // 2
-        y = available.y() + (available.height() - scaled.height()) // 2
-
-        # 1. Map widget click to raw image pixels
-        scale_x = scaled.width() / self._image.width()
-        scale_y = scaled.height() / self._image.height()
-        
-        raw_pixel_x = (click.x() - x) / scale_x
-        raw_pixel_y = (click.y() - y) / scale_y
-
-        # 2. Map raw pixels to destination coordinates
+        raw_pixel_x = (click.x() - self._offset.x()) / self._scale
+        raw_pixel_y = (click.y() - self._offset.y()) / self._scale
         dest_x, dest_y = self.projection.camera_to_physical(raw_pixel_x, raw_pixel_y)
 
         # 3. Apply the offset to get actual physical mm relative to the positioner center
@@ -104,6 +121,34 @@ class CameraWidget(QWidget):
             print(f"No IK solution for physical point: {phys_x:.2f}, {phys_y:.2f} (Dest: {dest_x:.2f}, {dest_y:.2f})")
 
         self.update()
+      
+    def wheelEvent(self, event):
+        delta = event.angleDelta().y()
+        factor = 1.15 if delta > 0 else 1 / 1.15
+
+        # zoom toward cursor position
+        cursor_pos = QPointF(event.position())
+        # point in image space before scale change
+        img_point = (cursor_pos - self._offset) / self._scale
+
+        self._scale *= factor
+        self._scale = max(0.1, min(self._scale, 20.0))
+
+        # adjust offset so img_point stays under cursor
+        self._offset = cursor_pos - img_point * self._scale
+        self.update()
+
+
+
+    def mouseMoveEvent(self, event):
+        if self._pan_start is not None:
+            delta = QPointF(event.position()) - self._pan_start
+            self._offset = self._pan_offset_start + delta
+            self.update()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.RightButton:
+            self._pan_start = None
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -116,11 +161,11 @@ class CameraWidget(QWidget):
             painter.drawText(self.rect(), Qt.AlignCenter, "Waiting for camera frame")
             return
 
-        available = self.rect().adjusted(8, 8, -8, -8)
-        scaled = self._image.scaled(available.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        x = available.x() + (available.width() - scaled.width()) // 2
-        y = available.y() + (available.height() - scaled.height()) // 2
-        painter.drawImage(QPoint(x, y), scaled)
+        painter.save()
+        painter.translate(self._offset)
+        painter.scale(self._scale, self._scale)
+        painter.drawImage(QPointF(0, 0), self._image)
+        painter.restore()
 
         # Draw the projected annulus overlay
         if self.projection.is_calibrated:
@@ -129,13 +174,10 @@ class CameraWidget(QWidget):
             # Transform from physical space -> raw camera pixels
             t_proj = self.projection.get_qtransform()
             
-            # Transform from raw camera pixels -> scaled widget space
-            scale_x = scaled.width() / self._image.width()
-            scale_y = scaled.height() / self._image.height()
-            
+
             t_base = QTransform()
-            t_base.translate(x, y)
-            t_base.scale(scale_x, scale_y)
+            t_base.translate(self._offset.x(), self._offset.y())
+            t_base.scale(self._scale, self._scale)
             
             # Combine transforms (right multiply applies t_proj first, then t_base)
             painter.setTransform(t_proj * t_base)
