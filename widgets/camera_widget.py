@@ -17,6 +17,7 @@ from widgets.pan_zoom_mixin import PanZoomMixin
 
 class CameraWidget(QWidget, PanZoomMixin):
     move_requested = Signal(int, float, float)
+    move_queued = Signal(int, list)
     selection_changed = Signal(int)
 
     def __init__(self, parent=None):
@@ -116,10 +117,11 @@ class CameraWidget(QWidget, PanZoomMixin):
         # Calculate IK
         solutions = solve_inverse_kinematics(rel_x, rel_y, SHORT_ARM_LENGTH, LONG_ARM_LENGTH)
         if solutions:
-            alpha_1, beta_1 = solutions[0]
-            alpha_1 = self._normalize_for_positioner(alpha_1)
-            beta_1 = self._normalize_for_positioner(beta_1)
-            self.move_requested.emit(closest_pid, alpha_1, beta_1)
+            normalized_solutions = [
+                (self._normalize_for_positioner(a), self._normalize_for_positioner(b)) 
+                for a, b in solutions
+            ]
+            self.move_queued.emit(closest_pid, normalized_solutions)
 
         self.update()
       

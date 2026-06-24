@@ -54,6 +54,27 @@ def draw_positioner(painter, pid, pos_info, is_selected, draw_arms=True):
         painter.drawLine(QPointF(0, 0), QPointF(joint_x, joint_y))
         painter.drawLine(QPointF(joint_x, joint_y), QPointF(end_x, end_y))
 
+    queued_target = pos_info.get('queued_target')
+    if queued_target is not None:
+        queued_alpha_deg, queued_beta_deg = queued_target
+        queued_alpha_rad = math.radians(queued_alpha_deg)
+        queued_beta_rad = math.radians(queued_alpha_deg + queued_beta_deg) 
+        
+        queued_joint_x = SHORT_ARM_LENGTH * math.cos(queued_alpha_rad)
+        queued_joint_y = SHORT_ARM_LENGTH * math.sin(queued_alpha_rad)
+        
+        queued_end_x = queued_joint_x + LONG_ARM_LENGTH * math.cos(queued_beta_rad)
+        queued_end_y = queued_joint_y + LONG_ARM_LENGTH * math.sin(queued_beta_rad)
+        
+        queued_arm_pen = QPen(Qt.cyan)
+        queued_arm_pen.setWidthF(1.0)
+        queued_arm_pen.setCosmetic(True)
+        queued_arm_pen.setStyle(Qt.DashLine)
+        painter.setPen(queued_arm_pen)
+        
+        painter.drawLine(QPointF(0, 0), QPointF(queued_joint_x, queued_joint_y))
+        painter.drawLine(QPointF(queued_joint_x, queued_joint_y), QPointF(queued_end_x, queued_end_y))
+
     # Draw center point
     painter.setPen(Qt.white)
     painter.setBrush(Qt.white)

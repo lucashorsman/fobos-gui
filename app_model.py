@@ -20,7 +20,8 @@ class AppModel(QObject):
                 "alpha": 0.0,
                 "beta": 0.0,
                 "state": "ready",
-                "center": center # we may need to find a way to also inscribe this to the FPS object.
+                "center": center, # we may need to find a way to also inscribe this to the FPS object.
+                "queued_target": None
             }
             if self.selected_positioner_id is None:
                 self.selected_positioner_id = positioner_id
@@ -45,3 +46,35 @@ class AppModel(QObject):
         if positioner_id in self.positioners:
             self.positioners[positioner_id]["state"] = new_state
             self.model_updated.emit()
+
+    def queue_move(self, positioner_id: int, solutions: list, active_index: int = 0):
+        if positioner_id in self.positioners and solutions:
+            self.positioners[positioner_id]["queued_solutions"] = solutions
+            self.positioners[positioner_id]["queued_solution_index"] = active_index
+            self.positioners[positioner_id]["queued_target"] = solutions[active_index]
+            self.model_updated.emit()
+
+    def swap_solution(self, positioner_id: int):
+        if positioner_id in self.positioners:
+            pos = self.positioners[positioner_id]
+            solutions = pos.get("queued_solutions", [])
+            if len(solutions) > 1:
+                idx = pos.get("queued_solution_index", 0)
+                new_idx = (idx + 1) % len(solutions)
+                pos["queued_solution_index"] = new_idx
+                pos["queued_target"] = solutions[new_idx]
+                self.model_updated.emit()
+
+    def clear_queued_moves(self):
+        changed = False
+        for pid in self.positioners:
+            if self.positioners[pid].get("queued_target") is not None:
+                self.positioners[pid]["queued_target"] = None
+                self.positioners[pid]["queued_solutions"] = []
+                self.positioners[pid]["queued_solution_index"] = 0
+                changed = True
+        if changed:
+            self.model_updated.emit()
+
+    def get_queued_moves(self) -> dict:
+        return {pid: pos["queued_target"] for pid, pos in self.positioners.items() if pos["queued_target"] is not None}

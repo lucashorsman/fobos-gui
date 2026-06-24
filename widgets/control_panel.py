@@ -6,8 +6,10 @@ from PySide6.QtGui import QDoubleValidator
 class ControlPanel(QWidget):
     # Emits positioner_id, alpha, beta
     move_requested = Signal(int, float, float)
+    batch_move_requested = Signal()
     selection_changed = Signal(int)
     swap_views_requested = Signal()
+    swap_solution_requested = Signal(int)
 
     def __init__(self):
         super().__init__()
@@ -48,6 +50,18 @@ class ControlPanel(QWidget):
         self.go_button = QPushButton("Go To")
         self.go_button.clicked.connect(self._on_go_clicked)
         layout.addWidget(self.go_button)
+
+        # Send Queued Targets button
+        self.send_queue_button = QPushButton("No Queued Targets")
+        self.send_queue_button.setEnabled(False)
+        self.send_queue_button.clicked.connect(self.batch_move_requested.emit)
+        layout.addWidget(self.send_queue_button)
+
+        # Swap Solution button
+        self.swap_solution_button = QPushButton("Swap Solution")
+        self.swap_solution_button.setEnabled(False)
+        self.swap_solution_button.clicked.connect(self._on_swap_solution_clicked)
+        layout.addWidget(self.swap_solution_button)
 
         # Swap Views button
         self.swap_button = QPushButton("Swap Views")
@@ -96,3 +110,45 @@ class ControlPanel(QWidget):
         except ValueError:
             # Handle invalid input gracefully
             pass
+
+    def update_queue_state(self, positioners_dict):
+        queued_count = 0
+        has_moving = False
+        has_error = False
+
+        for pid, pos in positioners_dict.items():
+            if pos.get("queued_target") is not None:
+                queued_count += 1
+                state = pos.get("state", "ready")
+                if state == "moving":
+                    has_moving = True
+                elif state == "error":
+                    has_error = True
+
+        if queued_count == 0:
+            self.send_queue_button.setText("No Queued Targets")
+            self.send_queue_button.setEnabled(False)
+        elif has_moving:
+            self.send_queue_button.setText("Moving...")
+            self.send_queue_button.setEnabled(False)
+        elif has_error:
+            self.send_queue_button.setText("Error")
+            self.send_queue_button.setEnabled(False)
+        else:
+            self.send_queue_button.setText(f"Send {queued_count} Target{'s' if queued_count > 1 else ''}")
+            self.send_queue_button.setEnabled(True)
+
+        current_pid = self.pid_combo.currentData()
+        if current_pid is not None and current_pid in positioners_dict:
+            pos = positioners_dict[current_pid]
+            if len(pos.get("queued_solutions", [])) > 1:
+                self.swap_solution_button.setEnabled(True)
+            else:
+                self.swap_solution_button.setEnabled(False)
+        else:
+            self.swap_solution_button.setEnabled(False)
+
+    def _on_swap_solution_clicked(self):
+        current_pid = self.pid_combo.currentData()
+        if current_pid is not None:
+            self.swap_solution_requested.emit(current_pid)

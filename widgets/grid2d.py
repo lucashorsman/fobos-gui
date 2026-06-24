@@ -13,6 +13,7 @@ from helpers.constants import SHORT_ARM_LENGTH, LONG_ARM_LENGTH
 
 class Grid2d(QWidget, PanZoomMixin):
     move_requested = Signal(int, float, float)
+    move_queued = Signal(int, list)
     selection_changed = Signal(int)
 
     def __init__(self):
@@ -26,6 +27,14 @@ class Grid2d(QWidget, PanZoomMixin):
         self._selected_pid = None
         self.setMouseTracking(True)
         
+
+    def _normalize_for_positioner(self, angle_deg):
+        adjusted = float(angle_deg)
+        while adjusted < -10.0:
+            adjusted += 360.0
+        while adjusted > 370.0:
+            adjusted -= 360.0
+        return adjusted
 
     def update_display(self, positioners_dict, selected_pid=None):
         self.positioners_dict = positioners_dict
@@ -63,8 +72,11 @@ class Grid2d(QWidget, PanZoomMixin):
             
             solutions = solve_inverse_kinematics(rel_x, rel_y, SHORT_ARM_LENGTH, LONG_ARM_LENGTH)
             if solutions:
-                alpha_1, beta_1 = solutions[0]
-                self.move_requested.emit(closest_pid, alpha_1, beta_1)
+                normalized_solutions = [
+                    (self._normalize_for_positioner(a), self._normalize_for_positioner(b)) 
+                    for a, b in solutions
+                ]
+                self.move_queued.emit(closest_pid, normalized_solutions)
 
     def mouseMoveEvent(self, event):
         if self.do_pan(event):

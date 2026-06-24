@@ -75,12 +75,14 @@ class MainWindow(QMainWindow):
         # Wire up UI to model and actions
         self.model.model_updated.connect(self._on_model_updated)
         self.control_panel.move_requested.connect(self.on_move_requested)
-        self.grid2D.move_requested.connect(self.on_move_requested)
-        self.camera_widget.move_requested.connect(self.on_move_requested)
+        self.grid2D.move_queued.connect(self.model.queue_move)
+        self.camera_widget.move_queued.connect(self.model.queue_move)
+        self.control_panel.batch_move_requested.connect(self.on_batch_move_requested)
         self.control_panel.selection_changed.connect(self.model.set_selected_positioner)
         self.grid2D.selection_changed.connect(self.model.set_selected_positioner)
         self.camera_widget.selection_changed.connect(self.model.set_selected_positioner)
         self.control_panel.swap_views_requested.connect(self.on_swap_views_requested)
+        self.control_panel.swap_solution_requested.connect(self.model.swap_solution)
         
         self.poller = None
         self.vimba_worker = None
@@ -105,6 +107,13 @@ class MainWindow(QMainWindow):
         self.grid2D.update_display(self.model.positioners, self.model.selected_positioner_id)
         self.camera_widget.update_display(self.model.positioners, self.model.selected_positioner_id)
         self.control_panel.update_selected_positioner(self.model.selected_positioner_id)
+        self.control_panel.update_queue_state(self.model.positioners)
+
+    def on_batch_move_requested(self):
+        queued_moves = self.model.get_queued_moves()
+        for pid, (alpha, beta) in queued_moves.items():
+            self.on_move_requested(pid, alpha, beta)
+        self.model.clear_queued_moves()
 
     def on_move_requested(self, pid: int, alpha: float, beta: float):
         if pid in self.workers:

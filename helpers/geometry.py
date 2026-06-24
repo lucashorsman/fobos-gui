@@ -15,7 +15,7 @@ def get_clicked_positioner(click_x, click_y, positioners_dict, selected_pid):
 
     # Check if clicked inside the currently selected positioner first
     if selected_pid is not None and selected_pid in positioners_dict:
-        cx, cy = positioners_dict[selected_pid].get('center', (0.0, 0.0))
+        cx, cy = positioners_dict[selected_pid].get('center', (0.0, 0.0)) #the 0,0 here is a default in cases where the center isnt set.
         if math.hypot(click_x - cx, click_y - cy) <= outer_radius:
             return selected_pid
 

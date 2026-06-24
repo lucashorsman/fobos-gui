@@ -31,7 +31,19 @@ class PositionerWorker(QObject):
         try:
             self._is_moving = True
             self.move_started.emit(self.positioner_id)
+            
+            # ARCHITECTURE NOTE ON BATCHING:
+            # Currently, the GUI submits batch moves by calling `request_move` concurrently 
+            # across multiple independent PositionerWorkers. 
+            # Because `jaeger-core`'s `goto()` inherently accepts a dictionary of multiple 
+            # positioners (e.g., `goto({1: (a, b), 2: (c, d)})`), it is fundamentally 
+            # designed to handle bulk multi-arm moves in a single command. 
+            # If CAN bus congestion occurs, or if we need to leverage jaeger-core's 
+            # built-in collision detection across multiple arms, we should refactor 
+            # this architecture to submit a single bulk dictionary to a centralized 
+            # worker rather than firing off individual concurrent goto commands.
             await self._fps.goto({self.positioner_id: (alpha, beta)})
+            
             self.move_done.emit(self.positioner_id)
         except Exception as e:
             self.error.emit(self.positioner_id, str(e))
