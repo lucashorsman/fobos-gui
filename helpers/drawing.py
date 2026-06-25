@@ -106,6 +106,13 @@ def draw_coordinate_grid(painter, rect, spacing=100.0):
     start_y = math.floor(rect.top() / spacing)
     end_y = math.ceil(rect.bottom() / spacing)
 
+    # Safety limits to prevent infinite loops from bad projections (e.g. bowtie)
+    MAX_LINES = 10000
+    if (end_x - start_x) > MAX_LINES or (end_y - start_y) > MAX_LINES:
+        # Just draw a basic crosshair instead of millions of lines
+        start_x, end_x = 0, 0
+        start_y, end_y = 0, 0
+
     grid_pen = QPen(QColor(255, 255, 255, 40))
     grid_pen.setCosmetic(True)
     

@@ -5,8 +5,7 @@ from __future__ import annotations
 import math
 from PySide6.QtCore import QPoint, QPointF, Qt, Slot, Signal, QRectF
 from PySide6.QtGui import QImage, QPainter, QTransform, QPen, QPainterPath, QColor   
-from PySide6.QtWidgets import QWidget
-
+from PySide6.QtWidgets import QLabel, QListWidget, QMessageBox, QPushButton, QListWidget, QVBoxLayout, QHBoxLayout, QWidget, QDialog, QFormLayout, QLineEdit
 from helpers.constants import SHORT_ARM_LENGTH, LONG_ARM_LENGTH
 from helpers.annulus import solve_inverse_kinematics
 from helpers.projection import PositionerProjection
@@ -14,6 +13,17 @@ from helpers.drawing import draw_positioner, draw_coordinate_grid
 from helpers.geometry import get_clicked_positioner
 from widgets.pan_zoom_mixin import PanZoomMixin
 
+
+class UnclosableDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.allow_close = False
+        
+    def closeEvent(self, event):
+        if self.allow_close:
+            event.accept()
+        else:
+            event.ignore()
 
 class CameraWidget(QWidget, PanZoomMixin):
     move_requested = Signal(int, float, float)
@@ -25,6 +35,7 @@ class CameraWidget(QWidget, PanZoomMixin):
         self.init_pan_zoom()
         self._frame = None
         self._image = None
+        self._calibration_mode = False
         self._selected_pid = None
         self.setMinimumSize(400, 300)
         self.setWindowTitle("Camera View")
@@ -36,7 +47,9 @@ class CameraWidget(QWidget, PanZoomMixin):
 
         self.projection = PositionerProjection()
         self.target_offset = None
-
+        # Z-order (reading order): Top-Left, Top-Right, Bottom-Left, Bottom-Right
+        self.physical_pts = [(825, 525), (1725, 525), (825, 1650), (1725, 1650)]
+        self.camera_pts = []
         # Calibration: Mapping destination (rectified/physical) to source (camera pixels)
         # Using highly distorted camera points (a steep trapezoid) to test the projection warp!
         # self.projection.calibrate(
@@ -44,11 +57,11 @@ class CameraWidget(QWidget, PanZoomMixin):
         #     camera_pts=[(800, 300), (1100, 300), (200, 900), (1700, 900)]
         # )
         #less insane projection from jchen
-        self.projection.calibrate(
-        physical_pts=[(825, 525), (1725, 525), (825, 1650), (1725, 1650)],
-        camera_pts=[(825, 525), (1725, 525), (825, 1650), (1725, 1650)]
-        )
-
+        # self.projection.calibrate(
+        # physical_pts=[(825, 525), (1725, 525), (825, 1650), (1725, 1650)],
+        # camera_pts=[(825, 525), (1725, 525), (825, 1650), (1725, 1650)]
+        # )
+        
 
     def fit_to_view(self):
         if self._image is None:
@@ -74,7 +87,59 @@ class CameraWidget(QWidget, PanZoomMixin):
         else:
             self.update()
         
+    def start_calibration(self):
+        self.camera_pts = []
+        self.projection.reset()
+        self.update()
+        #create the calibration dialogbox
+        self.calibration_dialog = UnclosableDialog(self)
+        self.calibration_dialog.setWindowTitle("Calibration")
+        self._calibration_mode = True
+        #fix the size of the dialog box
+        self.calibration_dialog.setFixedSize(400, 200)
+        #layout text instructions in the dialog box
+        self.calibration_dialog.setLayout(QFormLayout())
+        self.instruction_label = QLabel("Click on the 4 corners in this exact order:\n1. Top-Left\n2. Top-Right\n3. Bottom-Left\n4. Bottom-Right")
+        self.calibration_dialog.layout().addRow("Instructions:", self.instruction_label)
+        
+        button_layout = QHBoxLayout()
+        
+        self.redo_button = QPushButton("Redo")
+        self.redo_button.setEnabled(False)
+        self.redo_button.clicked.connect(self.on_calibration_redo)
+        button_layout.addWidget(self.redo_button)
+        
+        self.finish_button = QPushButton("Finish Calibration")
+        self.finish_button.setEnabled(False)
+        self.finish_button.clicked.connect(self.on_calibration_completed)
+        button_layout.addWidget(self.finish_button)
+        
+        self.calibration_dialog.layout().addRow(button_layout)
+        #force it on top of the main window
 
+        self.calibration_dialog.setWindowFlags(self.calibration_dialog.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
+        
+        # You can adjust these X and Y coordinates to spawn it exactly where you want
+        main_pos = self.window().pos()
+        self.calibration_dialog.move(main_pos.x()+800 , main_pos.y()+600)
+        
+        #display asynchronously
+        self.calibration_dialog.show()
+
+    def on_calibration_redo(self):
+        self.camera_pts = []
+        self.projection.reset()
+        self.instruction_label.setText("Click on the 4 corners in this exact order:\n1. Top-Left\n2. Top-Right\n3. Bottom-Left\n4. Bottom-Right")
+        self.finish_button.setEnabled(False)
+        self.redo_button.setEnabled(False)
+        self.update()
+
+    def on_calibration_completed(self):
+        print("Calibration saved with points:", self.camera_pts)
+        self._calibration_mode = False
+        self.calibration_dialog.allow_close = True
+        self.calibration_dialog.close()
+        
     def _normalize_for_positioner(self, angle_deg):
         adjusted = float(angle_deg)
         while adjusted < -10.0:
@@ -89,7 +154,27 @@ class CameraWidget(QWidget, PanZoomMixin):
 
         if event.button() != Qt.LeftButton or self._image is None:
             return
-
+        if self._calibration_mode:
+            # In calibration mode, we want to collect the clicked points
+            if len(self.camera_pts) < 4:
+                raw_pixel_x, raw_pixel_y = self.get_physical_click_coords(event)
+                self.camera_pts.append((raw_pixel_x, raw_pixel_y))
+                print(f"Calibration point {len(self.camera_pts)}: Camera pixel coordinates: ({raw_pixel_x}, {raw_pixel_y})")
+                if len(self.camera_pts) < 4:
+                    self.instruction_label.setText(f"Points collected: {len(self.camera_pts)}/4\nClick the next corner.")
+                elif len(self.camera_pts) == 4:
+                    self.instruction_label.setText("4 points collected!\nPreviewing projection... Click 'Finish' to save or 'Redo' to try again.")
+                    self.finish_button.setEnabled(True)
+                    self.redo_button.setEnabled(True)
+                    
+                    try:
+                        self.projection.calibrate(self.physical_pts, self.camera_pts)
+                    except Exception as e:
+                        self.instruction_label.setText("Error during calibration! Please click 'Redo'.")
+                        self.finish_button.setEnabled(False)
+                    
+                    self.update()
+            return
         raw_pixel_x, raw_pixel_y = self.get_physical_click_coords(event)
         dest_x, dest_y = self.projection.camera_to_physical(raw_pixel_x, raw_pixel_y)
 

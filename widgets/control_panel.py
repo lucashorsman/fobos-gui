@@ -10,6 +10,7 @@ class ControlPanel(QWidget):
     selection_changed = Signal(int)
     swap_views_requested = Signal()
     swap_solution_requested = Signal(int)
+    calibrate_requested = Signal()
 
     def __init__(self):
         super().__init__()
@@ -67,6 +68,11 @@ class ControlPanel(QWidget):
         self.swap_button = QPushButton("Swap Views")
         self.swap_button.clicked.connect(self.swap_views_requested.emit)
         layout.addWidget(self.swap_button)
+        
+        #calibrate button
+        self.calibrate_button = QPushButton("Calibrate")
+        self.calibrate_button.clicked.connect(self.calibrate_requested.emit)
+        layout.addWidget(self.calibrate_button)
 
     def update_positioners(self, pids):
         current_pid = self.pid_combo.currentText()

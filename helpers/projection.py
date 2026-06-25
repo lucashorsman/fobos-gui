@@ -20,6 +20,9 @@ class PositionerProjection:
             self._tform = None
             raise RuntimeError("Failed to estimate transformation.")
 
+    def reset(self):
+        self._tform = None
+
     @property
     def is_calibrated(self) -> bool:
         return self._tform is not None

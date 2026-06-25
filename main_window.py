@@ -82,6 +82,7 @@ class MainWindow(QMainWindow):
         self.grid2D.selection_changed.connect(self.model.set_selected_positioner)
         self.camera_widget.selection_changed.connect(self.model.set_selected_positioner)
         self.control_panel.swap_views_requested.connect(self.on_swap_views_requested)
+        self.control_panel.calibrate_requested.connect(self.camera_widget.start_calibration)
         self.control_panel.swap_solution_requested.connect(self.model.swap_solution)
         
         self.poller = None
