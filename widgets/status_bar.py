@@ -25,7 +25,9 @@ class StatusBar(QWidget):
             beta = state.get("beta", 0.0)
             status = state.get("state", "unknown")
             
-            line = f"PID {pid:03d} | α: {alpha:>7.2f}° | β: {beta:>7.2f}° | State: {status.upper()}"
+            line = f"PID {pid:03d} | α: {alpha:>7.2f}° | β: {beta:>7.2f}° | "
+            line += f"State: {status.upper()} | Center: {state.get('center', (0.0, 0.0))}"
+            
             lines.append(line)
             
         if not lines:

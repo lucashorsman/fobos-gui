@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import math
-from PySide6.QtCore import QPoint, QPointF, Qt, Slot, Signal, QRectF
+from PySide6.QtCore import QPoint, QPointF, Qt, Slot, Signal, QRectF, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QImage, QPainter, QTransform, QPen, QPainterPath, QColor   
-from PySide6.QtWidgets import QLabel, QListWidget, QMessageBox, QPushButton, QListWidget, QVBoxLayout, QHBoxLayout, QWidget, QDialog, QFormLayout, QLineEdit
+from PySide6.QtWidgets import QLabel, QListWidget, QMessageBox, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QDialog, QFormLayout, QLineEdit, QSlider
 from helpers.constants import SHORT_ARM_LENGTH, LONG_ARM_LENGTH
 from helpers.annulus import solve_inverse_kinematics
 from helpers.projection import PositionerProjection
@@ -25,10 +25,52 @@ class UnclosableDialog(QDialog):
         else:
             event.ignore()
 
+class CameraSettingsPanel(QWidget):
+    exposure_changed = Signal(int)
+    gain_changed = Signal(float)
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Camera Settings")
+        self.setLayout(QFormLayout())
+        self.setAutoFillBackground(True)
+        # Darker background for visibility over the camera
+        self.setStyleSheet("CameraSettingsPanel { background-color: #2b2b2b; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; border: 1px solid #555; border-top: none; }")
+        
+        self.exposure_label = QLabel("10000 \u00B5s")
+        self.exposure_slider = QSlider(Qt.Horizontal)
+        self.exposure_slider.setRange(100, 100000)
+        self.exposure_slider.setValue(10000)
+        
+        self.gain_label = QLabel("0.0 dB")
+        self.gain_slider = QSlider(Qt.Horizontal)
+        self.gain_slider.setRange(0, 400) # 0 to 40.0 dB
+        self.gain_slider.setValue(0)
+        
+        layout = self.layout()
+        layout.addRow("Exposure:", self.exposure_slider)
+        layout.addRow("", self.exposure_label)
+        layout.addRow("Gain:", self.gain_slider)
+        layout.addRow("", self.gain_label)
+        
+        self.exposure_slider.valueChanged.connect(self.on_exposure_changed)
+        self.gain_slider.valueChanged.connect(self.on_gain_changed)
+        
+    def on_exposure_changed(self, val):
+        self.exposure_label.setText(f"{val} \u00B5s")
+        self.exposure_changed.emit(val)
+
+    def on_gain_changed(self, val):
+        gain_db = val / 10.0
+        self.gain_label.setText(f"{gain_db:.1f} dB")
+        self.gain_changed.emit(gain_db)
+
 class CameraWidget(QWidget, PanZoomMixin):
     move_requested = Signal(int, float, float)
     move_queued = Signal(int, list)
     selection_changed = Signal(int)
+    exposure_changed = Signal(int)
+    gain_changed = Signal(float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -61,7 +103,53 @@ class CameraWidget(QWidget, PanZoomMixin):
         # physical_pts=[(825, 525), (1725, 525), (825, 1650), (1725, 1650)],
         # camera_pts=[(825, 525), (1725, 525), (825, 1650), (1725, 1650)]
         # )
+
+        # UI overlays
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        self.settings_button = QPushButton("Camera Settings")
+        self.settings_button.clicked.connect(self.toggle_settings_panel)
+        layout.addWidget(self.settings_button, alignment=Qt.AlignTop | Qt.AlignRight)
         
+        self.settings_panel = CameraSettingsPanel(self)
+        self.settings_panel.exposure_changed.connect(self.exposure_changed.emit)
+        self.settings_panel.gain_changed.connect(self.gain_changed.emit)
+        
+        self._panel_visible = False
+        self.panel_animation = QPropertyAnimation(self.settings_panel, b"pos")
+        self.panel_animation.setDuration(300)
+        self.panel_animation.setEasingCurve(QEasingCurve.OutCubic)
+
+    def toggle_settings_panel(self):
+        self.settings_panel.adjustSize()
+        panel_x = (self.width() - self.settings_panel.width()) // 2
+        
+        self.settings_panel.show()
+        self.settings_panel.raise_()
+        
+        self.panel_animation.stop()
+        self.panel_animation.setStartValue(self.settings_panel.pos())
+        
+        if self._panel_visible:
+            # Slide up
+            self.panel_animation.setEndValue(QPoint(panel_x, -self.settings_panel.height()))
+            self._panel_visible = False
+            self.settings_button.setText("Camera Settings")
+        else:
+            # Slide down
+            self.panel_animation.setEndValue(QPoint(panel_x, 0))
+            self._panel_visible = True
+            self.settings_button.setText("Hide Settings")
+            
+        self.panel_animation.start()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        panel_x = (self.width() - self.settings_panel.width()) // 2
+        if self._panel_visible:
+            self.settings_panel.move(panel_x, 0)
+        else:
+            self.settings_panel.move(panel_x, -self.settings_panel.height())
 
     def fit_to_view(self):
         if self._image is None:
@@ -174,6 +262,9 @@ class CameraWidget(QWidget, PanZoomMixin):
                         self.finish_button.setEnabled(False)
                     
                     self.update()
+            return
+        if not self.projection.is_calibrated:
+            QMessageBox.warning(self, "Calibration Required", "Please calibrate the camera before moving positioners.")
             return
         raw_pixel_x, raw_pixel_y = self.get_physical_click_coords(event)
         dest_x, dest_y = self.projection.camera_to_physical(raw_pixel_x, raw_pixel_y)

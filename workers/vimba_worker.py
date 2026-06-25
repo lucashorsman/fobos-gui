@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QThread, Signal, Slot
 
 _VMBPY_IMPORT_ERROR = None
 
@@ -22,6 +22,16 @@ class VimbaWorker(QThread):
 		super().__init__(parent)
 		self._running = False
 
+	@Slot(int)
+	def set_exposure(self, exposure_us: int):
+		print(f"VimbaWorker stub: setting exposure to {exposure_us} \u00B5s")
+		# TODO: implement actual vmbpy camera exposure setting here
+
+	@Slot(float)
+	def set_gain(self, gain_db: float):
+		print(f"VimbaWorker stub: setting gain to {gain_db} dB")
+		# TODO: implement actual vmbpy camera gain setting here
+	
 	def run(self):
 		if _VMBPY_IMPORT_ERROR is not None:
 			self.error.emit(

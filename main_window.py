@@ -101,6 +101,8 @@ class MainWindow(QMainWindow):
         self.vimba_worker = VimbaWorker(self)
         self.vimba_worker.frame_ready.connect(self.camera_widget.update_frame, Qt.QueuedConnection)
         self.vimba_worker.error.connect(self.on_vimba_error)
+        self.camera_widget.exposure_changed.connect(self.vimba_worker.set_exposure)
+        self.camera_widget.gain_changed.connect(self.vimba_worker.set_gain)
         self.vimba_worker.start()
 
     def _on_model_updated(self): #called when the model emits model_updated, which happens whenever the positioners dict is updated with new positions or states
