@@ -1,8 +1,8 @@
 #assembles all widgets and components for the main window
 from widgets.grid2d import Grid2d
-from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter
+from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QLabel
 from app_model import AppModel
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QEvent
 from workers.positioner_worker import PositionerWorker
 from workers.fps_manager import FPSManager
 from workers.vimba_worker import VimbaWorker
@@ -69,6 +69,13 @@ class MainWindow(QMainWindow):
         
         self.current_main_view = self.grid2D
         self.current_small_view = self.camera_widget
+
+        self.mouse_coord_label = QLabel("X: --, Y: --")
+        self.mouse_coord_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.statusBar().addPermanentWidget(self.mouse_coord_label)
+
+        self.grid2D.installEventFilter(self)
+        self.camera_widget.installEventFilter(self)
 
         self.model = AppModel()
         
@@ -181,6 +188,16 @@ class MainWindow(QMainWindow):
 
     def on_vimba_error(self, err_msg=""):
         print(f"Error initializing Vimba camera: {err_msg}")
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.MouseMove:
+            if obj in (self.grid2D, self.camera_widget):
+                try:
+                    phys_x, phys_y = obj.get_physical_click_coords(event)
+                    self.mouse_coord_label.setText(f"X: {int(phys_x)}, Y: {int(phys_y)}")
+                except Exception:
+                    pass
+        return super().eventFilter(obj, event)
 
     def closeEvent(self, event):
         if self.vimba_worker:
