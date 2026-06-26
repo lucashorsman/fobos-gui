@@ -95,7 +95,7 @@ class Grid2d(QWidget, PanZoomMixin):
 
         painter.save()
         painter.translate(self._offset)
-        painter.scale(self._scale, self._scale)
+        painter.scale(self._scale, -self._scale)
 
         # Calculate visible rect in physical coordinates
         inverse_transform, invertible = painter.transform().inverted()

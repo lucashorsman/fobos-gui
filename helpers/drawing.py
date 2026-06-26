@@ -88,8 +88,13 @@ def draw_positioner(painter, pid, pos_info, is_selected, draw_arms=True):
         painter.setPen(Qt.white)
     else:
         painter.setPen(QColor(200, 200, 200, 150))
+        
+    painter.save()
+    if painter.transform().m22() < 0:
+        painter.scale(1, -1)
     rect = QRectF(-50, -50, 100, 100)
     painter.drawText(rect, Qt.AlignCenter, str(pid))
+    painter.restore()
 
     painter.restore()
 

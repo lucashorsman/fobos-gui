@@ -90,7 +90,12 @@ class CameraWidget(QWidget, PanZoomMixin):
         self.projection = PositionerProjection()
         self.target_offset = None
         # Z-order (reading order): Top-Left, Top-Right, Bottom-Left, Bottom-Right
-        self.physical_pts = [(825, 525), (1725, 525), (825, 1650), (1725, 1650)]
+        # self.physical_pts = [(825, 525), (1725, 525), (825, 1650), (1725, 1650)]
+        # self.physical_pts = [(825, 1650), (1725, 1650), (825, 525), (1725, 525)]
+        # self.physical_pts = [(825, -1650), (1725, -1650), (825, -525), (1725, -525)]
+        # self.physical_pts = [(825, -525), (1725, -525), (825, -1650), (1725, -1650)]
+        self.physical_pts = [(-1000,1000),(1000,1000),(-1000,-1500),(1000,-1500)]
+        #this is found by counting the number of boxes, then multiplying by GRID_SPACING 
         self.camera_pts = []
         # Calibration: Mapping destination (rectified/physical) to source (camera pixels)
         # Using highly distorted camera points (a steep trapezoid) to test the projection warp!
@@ -103,7 +108,11 @@ class CameraWidget(QWidget, PanZoomMixin):
         # physical_pts=[(825, 525), (1725, 525), (825, 1650), (1725, 1650)],
         # camera_pts=[(825, 525), (1725, 525), (825, 1650), (1725, 1650)]
         # )
-
+        # self.projection.calibrate(
+        #     physical_pts=[(0, 100), (100, 100), (0, 0), (100, 0)],
+        #     camera_pts=[(100, 100), (1100, 100), (100, 1000), (1100, 1000)] 
+        # )
+        
         # UI overlays
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -236,6 +245,12 @@ class CameraWidget(QWidget, PanZoomMixin):
             adjusted -= 360.0
         return adjusted
 
+    def get_physical_click_coords(self, event):
+        raw_x, raw_y = super().get_physical_click_coords(event)
+        if self.projection.is_calibrated:
+            return self.projection.camera_to_physical(raw_x, raw_y)
+        return raw_x, raw_y
+
     def mousePressEvent(self, event):
         if self.start_pan(event):
             return
@@ -245,7 +260,7 @@ class CameraWidget(QWidget, PanZoomMixin):
         if self._calibration_mode:
             # In calibration mode, we want to collect the clicked points
             if len(self.camera_pts) < 4:
-                raw_pixel_x, raw_pixel_y = self.get_physical_click_coords(event)
+                raw_pixel_x, raw_pixel_y = super().get_physical_click_coords(event)
                 self.camera_pts.append((raw_pixel_x, raw_pixel_y))
                 print(f"Calibration point {len(self.camera_pts)}: Camera pixel coordinates: ({raw_pixel_x}, {raw_pixel_y})")
                 if len(self.camera_pts) < 4:
@@ -266,8 +281,7 @@ class CameraWidget(QWidget, PanZoomMixin):
         if not self.projection.is_calibrated:
             QMessageBox.warning(self, "Calibration Required", "Please calibrate the camera before moving positioners.")
             return
-        raw_pixel_x, raw_pixel_y = self.get_physical_click_coords(event)
-        dest_x, dest_y = self.projection.camera_to_physical(raw_pixel_x, raw_pixel_y)
+        dest_x, dest_y = self.get_physical_click_coords(event)
 
         # Convert destination physical space to grid space (we translate painter by 1275, 1087)
         # grid_x = dest_x - 1275
@@ -325,7 +339,8 @@ class CameraWidget(QWidget, PanZoomMixin):
 
         painter.save()
         painter.translate(self._offset)
-        painter.scale(self._scale, self._scale)
+        painter.scale(self._scale, -self._scale)
+        # Image is pre-flipped in _frame_to_qimage so we can just draw it natively in this Cartesian space
         painter.drawImage(QPointF(-self._image.width() / 2, -self._image.height() / 2), self._image)
         painter.restore()
 
@@ -339,7 +354,7 @@ class CameraWidget(QWidget, PanZoomMixin):
 
             t_base = QTransform()
             t_base.translate(self._offset.x(), self._offset.y())
-            t_base.scale(self._scale, self._scale)
+            t_base.scale(self._scale, -self._scale)
             
             # Combine transforms (right multiply applies t_proj first, then t_base)
             painter.setTransform(t_proj * t_base)
@@ -377,16 +392,19 @@ class CameraWidget(QWidget, PanZoomMixin):
         if frame.ndim == 2:
             height, width = frame.shape
             bytes_per_line = width
-            return QImage(frame.data, width, height, bytes_per_line, QImage.Format_Grayscale8).copy()
+            img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_Grayscale8).copy()
+            return img.mirrored(False, True)
 
         if frame.ndim == 3:
             if frame.shape[2] == 3:
                 height, width, _ = frame.shape
                 bytes_per_line = width * 3
-                return QImage(frame.data, width, height, bytes_per_line, QImage.Format_BGR888).copy()
+                img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_BGR888).copy()
+                return img.mirrored(False, True)
             elif frame.shape[2] == 1:
                 height, width, _ = frame.shape
                 bytes_per_line = width
-                return QImage(frame.data, width, height, bytes_per_line, QImage.Format_Grayscale8).copy()
+                img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_Grayscale8).copy()
+                return img.mirrored(False, True)
 
         return None
