@@ -6,12 +6,13 @@ import math
 from PySide6.QtCore import QPoint, QPointF, Qt, Slot, Signal, QRectF, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QImage, QPainter, QTransform, QPen, QPainterPath, QColor   
 from PySide6.QtWidgets import QLabel, QListWidget, QMessageBox, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QDialog, QFormLayout, QLineEdit, QSlider
-from helpers.constants import SHORT_ARM_LENGTH, LONG_ARM_LENGTH
+from helpers.constants import SHORT_ARM_LENGTH, LONG_ARM_LENGTH, GRID_SPACING
 from helpers.annulus import solve_inverse_kinematics
 from helpers.projection import PositionerProjection
 from helpers.drawing import draw_positioner, draw_coordinate_grid
 from helpers.geometry import get_clicked_positioner
 from widgets.pan_zoom_mixin import PanZoomMixin
+
 
 
 class UnclosableDialog(QDialog):
@@ -365,7 +366,7 @@ class CameraWidget(QWidget, PanZoomMixin):
             inverse_transform, invertible = painter.transform().inverted()
             if invertible:
                 visible_rect = inverse_transform.mapRect(QRectF(self.rect()))
-                draw_coordinate_grid(painter, visible_rect, spacing=100.0)
+                draw_coordinate_grid(painter, visible_rect, spacing=GRID_SPACING)
 
             positioner_items = self._positioners_dict.items() if hasattr(self, '_positioners_dict') else []
             for pid, p_info in positioner_items:

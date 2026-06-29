@@ -1,7 +1,7 @@
 import math
 from PySide6.QtCore import QPointF, Qt, QRectF
 from PySide6.QtGui import QPen, QColor, QPainterPath
-from helpers.constants import SHORT_ARM_LENGTH, LONG_ARM_LENGTH
+from helpers.constants import GRID_SPACING, SHORT_ARM_LENGTH, LONG_ARM_LENGTH
 
 def draw_positioner(painter, pid, pos_info, is_selected, draw_arms=True):
     inner_radius = abs(SHORT_ARM_LENGTH - LONG_ARM_LENGTH)
@@ -98,7 +98,7 @@ def draw_positioner(painter, pid, pos_info, is_selected, draw_arms=True):
 
     painter.restore()
 
-def draw_coordinate_grid(painter, rect, spacing=100.0):
+def draw_coordinate_grid(painter, rect, spacing=GRID_SPACING):
     """
     Draws a coordinate grid within the given physical rectangle.
     rect: QRectF indicating the visible physical bounds.

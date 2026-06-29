@@ -9,7 +9,7 @@ from PySide6.QtGui import QPainter, QPen, QColor, QPainterPath
 from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 
 from helpers.annulus import solve_inverse_kinematics
-from helpers.constants import SHORT_ARM_LENGTH, LONG_ARM_LENGTH
+from helpers.constants import GRID_SPACING, SHORT_ARM_LENGTH, LONG_ARM_LENGTH
 
 class Grid2d(QWidget, PanZoomMixin):
     move_requested = Signal(int, float, float)
@@ -101,7 +101,7 @@ class Grid2d(QWidget, PanZoomMixin):
         inverse_transform, invertible = painter.transform().inverted()
         if invertible:
             visible_rect = inverse_transform.mapRect(QRectF(self.rect()))
-            draw_coordinate_grid(painter, visible_rect, spacing=100.0)
+            draw_coordinate_grid(painter, visible_rect, spacing=GRID_SPACING)
 
         for pid, pos in self.positioners_dict.items():
             is_selected = (pid == self._selected_pid)
