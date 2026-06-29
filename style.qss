@@ -1,0 +1,125 @@
+/* Global style */
+QWidget {
+    background-color: #1e1e24;
+    color: #e0e0e0;
+    font-family: 'Helvetica Neue', 'Arial';
+    font-size: 14px;
+}
+
+/* Panels / Main Containers */
+QSplitter::handle {
+    background-color: #33333b;
+}
+
+QSplitter::handle:horizontal {
+    width: 6px;
+}
+
+QSplitter::handle:vertical {
+    height: 6px;
+}
+
+/* Control Panel Labels */
+QLabel {
+    color: #b0b0bb;
+}
+
+/* General Buttons */
+QPushButton {
+    background-color: #2d2d34;
+    border: 1px solid #4a4a55;
+    border-radius: 4px;
+    padding: 6px 12px;
+    color: #f0f0f0;
+    font-weight: bold;
+}
+
+QPushButton:hover {
+    background-color: #3a3a44;
+    border: 1px solid #5a5a65;
+}
+
+QPushButton:pressed {
+    background-color: #1a1a20;
+}
+
+QPushButton:disabled {
+    background-color: #202025;
+    color: #606060;
+    border: 1px solid #303035;
+}
+
+/* Primary Action Buttons (e.g. Go To, Send Targets) */
+QPushButton#go_button, QPushButton#send_queue_button {
+    background-color: #10b981; /* Blue */
+    border: 1px solid #059669;
+    color: white;
+}
+
+QPushButton#go_button:hover, QPushButton#send_queue_button:hover {
+    background-color: #047857;
+}
+
+QPushButton#go_button:pressed, QPushButton#send_queue_button:pressed {
+    background-color: #064e3b;
+}
+
+QPushButton#send_queue_button:disabled {
+    background-color: #064e3b; /* Darker blue */
+    color: #888888;
+    border: 1px solid #064e3b;
+}
+
+/* Danger / Warning Buttons (e.g. Calibrate) */
+QPushButton#calibrate_button {
+    background-color: #ef4444; /* Red */
+    border: 1px solid #dc2626;
+    color: white;
+}
+
+QPushButton#calibrate_button:hover {
+    background-color: #dc2626;
+}
+
+QPushButton#calibrate_button:pressed {
+    background-color: #b91c1c;
+}
+
+/* Secondary Actions (e.g. Swap Solution) */
+QPushButton#swap_solution_button {
+    background-color: #3b82f6; /* Green */
+    border: 1px solid #2563eb;
+    color: white;
+}
+
+QPushButton#swap_solution_button:hover {
+    background-color: #2563eb;
+}
+
+QPushButton#swap_solution_button:pressed {
+    background-color: #1d4ed8;
+}
+
+QPushButton#swap_solution_button:disabled {
+    background-color: #1e3a8a;
+    color: #888888;
+    border: 1px solid #1e3a8a;
+}
+
+
+/* Input fields */
+QLineEdit, QComboBox {
+    background-color: #121215;
+    border: 1px solid #4a4a55;
+    border-radius: 4px;
+    padding: 4px;
+    color: #ffffff;
+}
+
+QLineEdit:focus, QComboBox:focus {
+    border: 1px solid #3b82f6;
+}
+
+QComboBox::drop-down {
+    border: 0px;
+}

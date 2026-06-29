@@ -64,6 +64,7 @@ class ControlPanel(QWidget):
 
         # Go To button
         self.go_button = QPushButton("Go To")
+        self.go_button.setObjectName("go_button")
         self.go_button.clicked.connect(self._on_go_clicked)
         manual_layout.addWidget(self.go_button)
 
@@ -72,22 +73,31 @@ class ControlPanel(QWidget):
 
         # Send Queued Targets button
         self.send_queue_button = QPushButton("No Queued Targets")
+        self.send_queue_button.setObjectName("send_queue_button")
         self.send_queue_button.setEnabled(False)
         self.send_queue_button.clicked.connect(self.batch_move_requested.emit)
         layout.addWidget(self.send_queue_button)
 
         # Swap Solution button
         self.swap_solution_button = QPushButton("Swap Solution")
+        self.swap_solution_button.setObjectName("swap_solution_button")
         self.swap_solution_button.setEnabled(False)
         self.swap_solution_button.clicked.connect(self._on_swap_solution_clicked)
         layout.addWidget(self.swap_solution_button)
 
         #calibrate button
         self.calibrate_button = QPushButton("Calibrate")
+        self.calibrate_button.setObjectName("calibrate_button")
         self.calibrate_button.clicked.connect(self.calibrate_requested.emit)
         layout.addWidget(self.calibrate_button)
         
         layout.addStretch()
+
+    def on_calibration_completed(self):
+        self.calibrate_button.setText("Re-Calibrate")
+        self.calibrate_button.setObjectName("recalibrate_button")
+        self.calibrate_button.style().unpolish(self.calibrate_button)
+        self.calibrate_button.style().polish(self.calibrate_button)
 
     def _on_manual_toggle_toggled(self, checked):
         self.manual_container.setVisible(checked)

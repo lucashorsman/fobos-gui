@@ -12,7 +12,7 @@ from widgets.status_bar import StatusBar
 from widgets.control_panel import ControlPanel
 from widgets.view2D import View2D
 from widgets.grid2d import Grid2d
-import qdarkstyle
+import os
 
 class MainWindow(QMainWindow):
     @staticmethod
@@ -49,7 +49,10 @@ class MainWindow(QMainWindow):
         #         height: 6px;                /* Thickness of the horizontal divider line */
         #     }
         # """)
-        self.setStyleSheet(qdarkstyle.load_stylesheet())
+        style_path = os.path.join(os.path.dirname(__file__), "style.qss")
+        if os.path.exists(style_path):
+            with open(style_path, "r") as f:
+                self.setStyleSheet(f.read())
         # create the right-side vertical splitter for Status and Control
         self.right_splitter = QSplitter(Qt.Orientation.Vertical)
         self.right_splitter.addWidget(self.status_bar)
@@ -63,7 +66,7 @@ class MainWindow(QMainWindow):
         
         # Set custom proportions
         self.main_splitter.setSizes([700, 300]) 
-        self.right_splitter.setSizes([180, 640, 200])
+        self.right_splitter.setSizes([205, 620, 200])
         
         # Set the main splitter as the central widget
         self.setCentralWidget(self.main_splitter)
@@ -95,6 +98,7 @@ class MainWindow(QMainWindow):
         self.grid2D.swap_requested.connect(self.on_swap_views_requested)
         self.camera_widget.swap_requested.connect(self.on_swap_views_requested)
         self.control_panel.calibrate_requested.connect(self.camera_widget.start_calibration)
+        self.camera_widget.calibration_completed.connect(self.control_panel.on_calibration_completed)
         self.control_panel.swap_solution_requested.connect(self.model.swap_solution)
         
         self.poller = None

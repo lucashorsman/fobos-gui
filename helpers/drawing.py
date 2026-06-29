@@ -66,7 +66,7 @@ def draw_positioner(painter, pid, pos_info, is_selected, draw_arms=True):
         queued_end_x = queued_joint_x + LONG_ARM_LENGTH * math.cos(queued_beta_rad)
         queued_end_y = queued_joint_y + LONG_ARM_LENGTH * math.sin(queued_beta_rad)
         
-        queued_arm_pen = QPen(Qt.cyan)
+        queued_arm_pen = QPen(QColor("#3b82f6"))
         queued_arm_pen.setWidthF(3.0)
         queued_arm_pen.setCosmetic(True)
         queued_arm_pen.setStyle(Qt.DashLine)

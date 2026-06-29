@@ -73,6 +73,7 @@ class CameraWidget(QWidget, PanZoomMixin):
     swap_requested = Signal()
     exposure_changed = Signal(int)
     gain_changed = Signal(float)
+    calibration_completed = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -247,6 +248,7 @@ class CameraWidget(QWidget, PanZoomMixin):
         self._calibration_mode = False
         self.calibration_dialog.allow_close = True
         self.calibration_dialog.close()
+        self.calibration_completed.emit()
         
     def _normalize_for_positioner(self, angle_deg):
         adjusted = float(angle_deg)
