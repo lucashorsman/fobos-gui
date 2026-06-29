@@ -8,7 +8,6 @@ class ControlPanel(QWidget):
     move_requested = Signal(int, float, float)
     batch_move_requested = Signal()
     selection_changed = Signal(int)
-    swap_views_requested = Signal()
     swap_solution_requested = Signal(int)
     calibrate_requested = Signal()
 
@@ -21,17 +20,31 @@ class ControlPanel(QWidget):
         layout = QVBoxLayout(self)
         # layout.setContentsMargins(16, 16, 16, 16)
         # layout.setSpacing(8)
-        # Title
+        # Title and Positioner selection on one row
+        top_layout = QHBoxLayout()
         title = QLabel("<b>Control Panel</b>")
-        layout.addWidget(title)
-
-        # Positioner selection
-        pid_layout = QHBoxLayout()
-        pid_layout.addWidget(QLabel("Positioner ID:"))
+        top_layout.addWidget(title)
+        
+        top_layout.addStretch()
+        
+        top_layout.addWidget(QLabel("PID:"))
         self.pid_combo = QComboBox()
         self.pid_combo.currentIndexChanged.connect(self._on_combo_changed)
-        pid_layout.addWidget(self.pid_combo)
-        layout.addLayout(pid_layout)
+        top_layout.addWidget(self.pid_combo)
+        
+        layout.addLayout(top_layout)
+
+        # Manual Entry Toggle
+        self.manual_toggle_btn = QPushButton("▶ Manual Entry")
+        self.manual_toggle_btn.setCheckable(True)
+        self.manual_toggle_btn.setStyleSheet("text-align: left; padding: 4px; font-weight: bold;")
+        self.manual_toggle_btn.toggled.connect(self._on_manual_toggle_toggled)
+        layout.addWidget(self.manual_toggle_btn)
+
+        # Manual Entry Container
+        self.manual_container = QWidget()
+        manual_layout = QVBoxLayout(self.manual_container)
+        manual_layout.setContentsMargins(10, 0, 0, 0)
 
         # Alpha input
         alpha_layout = QHBoxLayout()
@@ -39,7 +52,7 @@ class ControlPanel(QWidget):
         self.alpha_input = QLineEdit()
         self.alpha_input.setValidator(QDoubleValidator(-9.0, 369.0, 4, self))
         alpha_layout.addWidget(self.alpha_input)
-        layout.addLayout(alpha_layout)
+        manual_layout.addLayout(alpha_layout)
 
         # Beta input
         beta_layout = QHBoxLayout()
@@ -47,12 +60,15 @@ class ControlPanel(QWidget):
         self.beta_input = QLineEdit()
         self.beta_input.setValidator(QDoubleValidator(-9.0, 369.0, 4, self))
         beta_layout.addWidget(self.beta_input)
-        layout.addLayout(beta_layout)
+        manual_layout.addLayout(beta_layout)
 
         # Go To button
         self.go_button = QPushButton("Go To")
         self.go_button.clicked.connect(self._on_go_clicked)
-        layout.addWidget(self.go_button)
+        manual_layout.addWidget(self.go_button)
+
+        layout.addWidget(self.manual_container)
+        self.manual_container.setVisible(False)
 
         # Send Queued Targets button
         self.send_queue_button = QPushButton("No Queued Targets")
@@ -66,15 +82,16 @@ class ControlPanel(QWidget):
         self.swap_solution_button.clicked.connect(self._on_swap_solution_clicked)
         layout.addWidget(self.swap_solution_button)
 
-        # Swap Views button
-        self.swap_button = QPushButton("Swap Views")
-        self.swap_button.clicked.connect(self.swap_views_requested.emit)
-        layout.addWidget(self.swap_button)
-        
         #calibrate button
         self.calibrate_button = QPushButton("Calibrate")
         self.calibrate_button.clicked.connect(self.calibrate_requested.emit)
         layout.addWidget(self.calibrate_button)
+        
+        layout.addStretch()
+
+    def _on_manual_toggle_toggled(self, checked):
+        self.manual_container.setVisible(checked)
+        self.manual_toggle_btn.setText("▼ Manual Entry" if checked else "▶ Manual Entry")
 
     def update_positioners(self, pids):
         current_pid = self.pid_combo.currentText()

@@ -70,6 +70,7 @@ class CameraWidget(QWidget, PanZoomMixin):
     move_requested = Signal(int, float, float)
     move_queued = Signal(int, list)
     selection_changed = Signal(int)
+    swap_requested = Signal()
     exposure_changed = Signal(int)
     gain_changed = Signal(float)
 
@@ -117,9 +118,18 @@ class CameraWidget(QWidget, PanZoomMixin):
         # UI overlays
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
+        
+        top_layout = QHBoxLayout()
+        self.swap_button = QPushButton("Swap Views")
+        self.swap_button.clicked.connect(self.swap_requested.emit)
+        top_layout.addWidget(self.swap_button, alignment=Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        
         self.settings_button = QPushButton("Camera Settings")
         self.settings_button.clicked.connect(self.toggle_settings_panel)
-        layout.addWidget(self.settings_button, alignment=Qt.AlignTop | Qt.AlignRight)
+        top_layout.addWidget(self.settings_button, alignment=Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
+        
+        layout.addLayout(top_layout)
+        layout.addStretch()
         
         self.settings_panel = CameraSettingsPanel(self)
         self.settings_panel.exposure_changed.connect(self.exposure_changed.emit)

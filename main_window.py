@@ -63,13 +63,16 @@ class MainWindow(QMainWindow):
         
         # Set custom proportions
         self.main_splitter.setSizes([700, 300]) 
-        self.right_splitter.setSizes([180, 420, 420])
+        self.right_splitter.setSizes([180, 640, 200])
         
         # Set the main splitter as the central widget
         self.setCentralWidget(self.main_splitter)
         
         self.current_main_view = self.grid2D
         self.current_small_view = self.camera_widget
+        
+        self.current_main_view.swap_button.setVisible(False)
+        self.current_small_view.swap_button.setVisible(True)
 
         self.mouse_coord_label = QLabel("X: --, Y: --")
         self.mouse_coord_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -89,7 +92,8 @@ class MainWindow(QMainWindow):
         self.control_panel.selection_changed.connect(self.model.set_selected_positioner)
         self.grid2D.selection_changed.connect(self.model.set_selected_positioner)
         self.camera_widget.selection_changed.connect(self.model.set_selected_positioner)
-        self.control_panel.swap_views_requested.connect(self.on_swap_views_requested)
+        self.grid2D.swap_requested.connect(self.on_swap_views_requested)
+        self.camera_widget.swap_requested.connect(self.on_swap_views_requested)
         self.control_panel.calibrate_requested.connect(self.camera_widget.start_calibration)
         self.control_panel.swap_solution_requested.connect(self.model.swap_solution)
         
@@ -155,6 +159,9 @@ class MainWindow(QMainWindow):
         # Update references
         self.current_main_view = view_small
         self.current_small_view = view_main
+        
+        self.current_main_view.swap_button.setVisible(False)
+        self.current_small_view.swap_button.setVisible(True)
 
     def on_fps_ready(self, fps):
         # Discover all connected positioners

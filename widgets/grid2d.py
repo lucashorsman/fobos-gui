@@ -6,7 +6,7 @@ import sys
 
 from PySide6.QtCore import QPointF, Qt, Signal, QRectF
 from PySide6.QtGui import QPainter, QPen, QColor, QPainterPath
-from PySide6.QtWidgets import QApplication, QPushButton, QWidget
+from PySide6.QtWidgets import QApplication, QPushButton, QWidget, QVBoxLayout
 
 from helpers.annulus import solve_inverse_kinematics
 from helpers.constants import GRID_SPACING, SHORT_ARM_LENGTH, LONG_ARM_LENGTH
@@ -15,6 +15,7 @@ class Grid2d(QWidget, PanZoomMixin):
     move_requested = Signal(int, float, float)
     move_queued = Signal(int, list)
     selection_changed = Signal(int)
+    swap_requested = Signal()
 
     def __init__(self):
         super().__init__()
@@ -26,6 +27,13 @@ class Grid2d(QWidget, PanZoomMixin):
         self.target_angles = {}
         self._selected_pid = None
         self.setMouseTracking(True)
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        self.swap_button = QPushButton("Swap Views")
+        self.swap_button.clicked.connect(self.swap_requested.emit)
+        layout.addWidget(self.swap_button, alignment=Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        layout.addStretch()
         
 
     def _normalize_for_positioner(self, angle_deg):
