@@ -14,7 +14,7 @@ def draw_positioner(painter, pid, pos_info, is_selected, draw_arms=True):
 
     if is_selected:
         pen = QPen(Qt.green)
-        pen.setWidthF(0.5)
+        pen.setWidthF(1.5)
         pen.setCosmetic(True)
         painter.setPen(pen)
 
@@ -25,7 +25,7 @@ def draw_positioner(painter, pid, pos_info, is_selected, draw_arms=True):
         painter.drawPath(path)
     else:
         pen = QPen(QColor(0, 150, 0, 100))
-        pen.setWidthF(0.5)
+        pen.setWidthF(1.5)
         pen.setCosmetic(True)
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
@@ -47,7 +47,7 @@ def draw_positioner(painter, pid, pos_info, is_selected, draw_arms=True):
         end_y = joint_y + LONG_ARM_LENGTH * math.sin(beta_rad)
         
         arm_pen = QPen(Qt.yellow if is_selected else Qt.gray)
-        arm_pen.setWidthF(1.0)
+        arm_pen.setWidthF(3.0)
         arm_pen.setCosmetic(True)
         painter.setPen(arm_pen)
         
@@ -67,7 +67,7 @@ def draw_positioner(painter, pid, pos_info, is_selected, draw_arms=True):
         queued_end_y = queued_joint_y + LONG_ARM_LENGTH * math.sin(queued_beta_rad)
         
         queued_arm_pen = QPen(Qt.cyan)
-        queued_arm_pen.setWidthF(1.0)
+        queued_arm_pen.setWidthF(3.0)
         queued_arm_pen.setCosmetic(True)
         queued_arm_pen.setStyle(Qt.DashLine)
         painter.setPen(queued_arm_pen)
@@ -125,14 +125,56 @@ def draw_coordinate_grid(painter, rect, spacing=GRID_SPACING):
     axis_pen.setWidthF(2.0)
     axis_pen.setCosmetic(True)
 
+    font = painter.font()
+    font.setPixelSize(int(spacing * 0.3) if spacing > 10 else 12)
+    painter.setFont(font)
+    text_pen = QPen(QColor(255, 255, 255, 200))
+
+    scale_factor = abs(painter.transform().m11())
+    screen_spacing = spacing * scale_factor
+    raw_step = 150 / screen_spacing if screen_spacing > 0 else 2
+    
+    def get_nice_step(s):
+        if s <= 2: return 2
+        if s <= 5: return 5
+        if s <= 10: return 10
+        if s <= 20: return 20
+        if s <= 50: return 50
+        return int(math.ceil(s / 50.0)) * 50
+        
+    step = get_nice_step(raw_step)
+
+    def draw_axis_text(text, px, py, align=Qt.AlignCenter, x_offset=0, y_offset=0):
+        painter.save()
+        painter.translate(px, py)
+        if painter.transform().m22() < 0:
+            painter.scale(1, -1)
+        painter.setPen(text_pen)
+        
+        rect_w = spacing * 2
+        rect_h = spacing
+        tr = QRectF(-rect_w/2 + x_offset, -rect_h/2 + y_offset, rect_w, rect_h)
+        painter.drawText(tr, align, text)
+        painter.restore()
+
     for i in range(start_x, end_x + 1):
         x = i * spacing
         painter.setPen(axis_pen if i == 0 else grid_pen)
         painter.drawLine(QPointF(x, rect.top()), QPointF(x, rect.bottom()))
+        if i != 0 and i % step == 0:
+            draw_axis_text(str(int(x)), x, 0, align=Qt.AlignTop | Qt.AlignHCenter, y_offset=5)
 
     for i in range(start_y, end_y + 1):
         y = i * spacing
         painter.setPen(axis_pen if i == 0 else grid_pen)
         painter.drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y))
-        
+        if i != 0 and i % step == 0:
+            draw_axis_text(str(int(y)), 0, y, align=Qt.AlignRight | Qt.AlignVCenter, x_offset=-5)
+            
+    # Draw +x and +y labels
+    if end_x > 0:
+        draw_axis_text("+x", rect.right() - spacing*0.5, 0, align=Qt.AlignBottom | Qt.AlignHCenter, y_offset=-5)
+    if end_y > 0:
+        draw_axis_text("+y", 0, rect.bottom() - spacing*0.5, align=Qt.AlignLeft | Qt.AlignVCenter, x_offset=5)
+
     painter.restore()

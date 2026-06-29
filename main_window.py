@@ -1,6 +1,7 @@
 #assembles all widgets and components for the main window
 from widgets.grid2d import Grid2d
 from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QLabel
+from PySide6.QtGui import QFont
 from app_model import AppModel
 from PySide6.QtCore import Qt, QEvent
 from workers.positioner_worker import PositionerWorker

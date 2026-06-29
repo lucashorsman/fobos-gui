@@ -14,11 +14,13 @@ class ControlPanel(QWidget):
 
     def __init__(self):
         super().__init__()
+
         self.setup_ui()
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-
+        # layout.setContentsMargins(16, 16, 16, 16)
+        # layout.setSpacing(8)
         # Title
         title = QLabel("<b>Control Panel</b>")
         layout.addWidget(title)

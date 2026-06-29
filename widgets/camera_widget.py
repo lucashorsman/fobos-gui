@@ -267,7 +267,7 @@ class CameraWidget(QWidget, PanZoomMixin):
                 if len(self.camera_pts) < 4:
                     self.instruction_label.setText(f"Points collected: {len(self.camera_pts)}/4\nClick the next corner.")
                 elif len(self.camera_pts) == 4:
-                    self.instruction_label.setText("4 points collected!\nPreviewing projection... Click 'Finish' to save or 'Redo' to try again.")
+                    self.instruction_label.setText("4 points collected!\nPreviewing projection...")
                     self.finish_button.setEnabled(True)
                     self.redo_button.setEnabled(True)
                     
