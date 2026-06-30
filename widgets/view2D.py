@@ -1,4 +1,10 @@
+"""
+EXPERIMENTAL / LEGACY — not wired into MainWindow.
+This single-positioner visualizer predates Grid2d and is kept only as a reference.
+Do not add new features here; use Grid2d instead.
+"""
 import sys
+
 
 from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QPainter

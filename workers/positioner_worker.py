@@ -1,4 +1,5 @@
 import asyncio
+import threading
 from PySide6.QtCore import QObject, Signal, Slot
 from jaeger.core import FPS
 
@@ -12,24 +13,26 @@ class PositionerWorker(QObject):
         self.positioner_id = positioner_id
         self._fps = fps
         self._loop = loop
-        self._is_moving = False
+        self._move_lock = threading.Lock()  # guards against concurrent move requests
 
     @Slot(float, float)
     def request_move(self, alpha: float, beta: float):
         if self._loop is None or self._fps is None:
             self.error.emit(self.positioner_id, "Positioner not initialized")
             return
-        if self._is_moving:
+        # acquire(blocking=False) is an atomic test-and-set — safe to call from main thread
+        if not self._move_lock.acquire(blocking=False):
             self.error.emit(self.positioner_id, "Move already in progress")
             return
         
-        # Submits coroutine to the FPSManager's asyncio loop from the main thread
+        # Submits coroutine to the FPSManager's asyncio loop from the main thread.
+        # The lock is released inside _do_move's finally block on the worker loop.
         asyncio.run_coroutine_threadsafe(
             self._do_move(alpha, beta), self._loop
         )
+
     async def _do_move(self, alpha: float, beta: float):
         try:
-            self._is_moving = True
             self.move_started.emit(self.positioner_id)
             
             # ARCHITECTURE NOTE ON BATCHING:
@@ -48,7 +51,7 @@ class PositionerWorker(QObject):
         except Exception as e:
             self.error.emit(self.positioner_id, str(e))
         finally:
-            self._is_moving = False
+            self._move_lock.release()
 
     def stop(self):
         # QObject doesn't need to be stopped or waited on

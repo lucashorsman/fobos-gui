@@ -9,7 +9,7 @@ from PySide6.QtGui import QPainter, QPen, QColor, QPainterPath
 from PySide6.QtWidgets import QApplication, QPushButton, QWidget, QVBoxLayout
 
 from helpers.annulus import solve_inverse_kinematics
-from helpers.constants import GRID_SPACING, SHORT_ARM_LENGTH, LONG_ARM_LENGTH
+from helpers.constants import GRID_SPACING, SHORT_ARM_LENGTH, LONG_ARM_LENGTH, normalize_for_positioner
 
 class Grid2d(QWidget, PanZoomMixin):
     move_requested = Signal(int, float, float)
@@ -36,13 +36,6 @@ class Grid2d(QWidget, PanZoomMixin):
         layout.addStretch()
         
 
-    def _normalize_for_positioner(self, angle_deg):
-        adjusted = float(angle_deg)
-        while adjusted < -10.0:
-            adjusted += 360.0
-        while adjusted > 370.0:
-            adjusted -= 360.0
-        return adjusted
 
     def update_display(self, positioners_dict, selected_pid=None):
         self.positioners_dict = positioners_dict
@@ -81,7 +74,7 @@ class Grid2d(QWidget, PanZoomMixin):
             solutions = solve_inverse_kinematics(rel_x, rel_y, SHORT_ARM_LENGTH, LONG_ARM_LENGTH)
             if solutions:
                 normalized_solutions = [
-                    (self._normalize_for_positioner(a), self._normalize_for_positioner(b)) 
+                    (normalize_for_positioner(a), normalize_for_positioner(b))
                     for a, b in solutions
                 ]
                 self.move_queued.emit(closest_pid, normalized_solutions)

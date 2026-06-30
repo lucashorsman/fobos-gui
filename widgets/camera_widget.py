@@ -6,7 +6,7 @@ import math
 from PySide6.QtCore import QPoint, QPointF, Qt, Slot, Signal, QRectF, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QImage, QPainter, QTransform, QPen, QPainterPath, QColor   
 from PySide6.QtWidgets import QLabel, QListWidget, QMessageBox, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QDialog, QFormLayout, QLineEdit, QSlider
-from helpers.constants import SHORT_ARM_LENGTH, LONG_ARM_LENGTH, GRID_SPACING
+from helpers.constants import SHORT_ARM_LENGTH, LONG_ARM_LENGTH, GRID_SPACING, normalize_for_positioner
 from helpers.annulus import solve_inverse_kinematics
 from helpers.projection import PositionerProjection
 from helpers.drawing import draw_positioner, draw_coordinate_grid
@@ -82,6 +82,8 @@ class CameraWidget(QWidget, PanZoomMixin):
         self._image = None
         self._calibration_mode = False
         self._selected_pid = None
+        self._positioners_dict = {}  # initialized here; populated via update_display
+
         self.setMinimumSize(400, 300)
         self.setWindowTitle("Camera View")
         self.setMouseTracking(True)
@@ -250,13 +252,7 @@ class CameraWidget(QWidget, PanZoomMixin):
         self.calibration_dialog.close()
         self.calibration_completed.emit()
         
-    def _normalize_for_positioner(self, angle_deg):
-        adjusted = float(angle_deg)
-        while adjusted < -10.0:
-            adjusted += 360.0
-        while adjusted > 370.0:
-            adjusted -= 360.0
-        return adjusted
+    # normalize_for_positioner imported from helpers.constants
 
     def get_physical_click_coords(self, event):
         raw_x, raw_y = super().get_physical_click_coords(event)
@@ -301,7 +297,7 @@ class CameraWidget(QWidget, PanZoomMixin):
         # grid_y = dest_y - 1087
         grid_x, grid_y = dest_x, dest_y
 
-        positioners_dict = getattr(self, '_positioners_dict', {})
+        positioners_dict = self._positioners_dict
         closest_pid = get_clicked_positioner(grid_x, grid_y, positioners_dict, self._selected_pid)
 
         if closest_pid is None:
@@ -321,7 +317,7 @@ class CameraWidget(QWidget, PanZoomMixin):
         solutions = solve_inverse_kinematics(rel_x, rel_y, SHORT_ARM_LENGTH, LONG_ARM_LENGTH)
         if solutions:
             normalized_solutions = [
-                (self._normalize_for_positioner(a), self._normalize_for_positioner(b)) 
+                (normalize_for_positioner(a), normalize_for_positioner(b))
                 for a, b in solutions
             ]
             self.move_queued.emit(closest_pid, normalized_solutions)
@@ -380,7 +376,7 @@ class CameraWidget(QWidget, PanZoomMixin):
                 visible_rect = inverse_transform.mapRect(QRectF(self.rect()))
                 draw_coordinate_grid(painter, visible_rect, spacing=GRID_SPACING)
 
-            positioner_items = self._positioners_dict.items() if hasattr(self, '_positioners_dict') else []
+            positioner_items = self._positioners_dict.items()
             for pid, p_info in positioner_items:
                 is_selected = (pid == self._selected_pid)
                 draw_positioner(painter, pid, p_info, is_selected, draw_arms=True)

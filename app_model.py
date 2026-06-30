@@ -20,12 +20,15 @@ class AppModel(QObject):
                 "alpha": 0.0,
                 "beta": 0.0,
                 "state": "ready",
-                "center": center, # we may need to find a way to also inscribe this to the FPS object.
-                "queued_target": None
+                "center": center,
+                "queued_target": None,
+                "queued_solutions": [],
+                "queued_solution_index": 0,
             }
             if self.selected_positioner_id is None:
                 self.selected_positioner_id = positioner_id
             self.model_updated.emit()
+
 
     def set_selected_positioner(self, positioner_id: int):
         if positioner_id in self.positioners and self.selected_positioner_id != positioner_id:

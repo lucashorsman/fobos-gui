@@ -7,7 +7,7 @@ from jaeger.core import FPS
 POLL_INTERVAL = 1 / 3
 
 class FPSManager(QThread):
-    ready = Signal(object)
+    ready = Signal(object, object)  # (fps, loop)
     positions_updated = Signal(object)
     error = Signal(str)
 
@@ -27,14 +27,14 @@ class FPSManager(QThread):
         self._stop_event = asyncio.Event()
         try:
             if os.environ.get("FOBOS_MOCK") == "1":
-                from workers.mock_fps import MockFPS
+                from .mock_fps import MockFPS
                 self._fps = MockFPS(num_positioners=5)
             else:
                 from jaeger.core import FPS
                 self._fps = FPS()
 
             await self._fps.initialise()
-            self.ready.emit(self._fps)
+            self.ready.emit(self._fps, self._loop)
             
             await self._poll_loop()
         except Exception as e:

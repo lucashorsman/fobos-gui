@@ -11,18 +11,10 @@ from widgets.camera_widget import CameraWidget
 from widgets.status_bar import StatusBar
 from widgets.control_panel import ControlPanel
 from widgets.view2D import View2D
-from widgets.grid2d import Grid2d
+from helpers.constants import normalize_for_positioner
 import os
 
 class MainWindow(QMainWindow):
-    @staticmethod
-    def _normalize_for_positioner(angle: float) -> float:
-        adjusted = float(angle)
-        while adjusted < -10.0:
-            adjusted += 360.0
-        while adjusted > 370.0:
-            adjusted -= 360.0
-        return adjusted
 
     def __init__(self):
         super().__init__()
@@ -136,9 +128,10 @@ class MainWindow(QMainWindow):
 
     def on_move_requested(self, pid: int, alpha: float, beta: float):
         if pid in self.workers:
-            alpha = self._normalize_for_positioner(alpha)
-            beta = self._normalize_for_positioner(beta)
+            alpha = normalize_for_positioner(alpha)
+            beta = normalize_for_positioner(beta)
             self.workers[pid].request_move(alpha, beta)
+
 
     def on_swap_views_requested(self):
         view_main = self.current_main_view
@@ -167,13 +160,13 @@ class MainWindow(QMainWindow):
         self.current_main_view.swap_button.setVisible(False)
         self.current_small_view.swap_button.setVisible(True)
 
-    def on_fps_ready(self, fps):
+    def on_fps_ready(self, fps, loop):
         # Discover all connected positioners
         for pid, pos in fps.positioners.items():
             center = getattr(pos, 'center', (0.0, 0.0))
             self.model.register_positioner(pid, center=center)
             
-            worker = PositionerWorker(fps, self.poller._loop, positioner_id=pid)
+            worker = PositionerWorker(fps, loop, positioner_id=pid)
             
             # Use default argument lambda id=pid to correctly capture the variable in the loop
             worker.move_started.connect(
@@ -183,7 +176,7 @@ class MainWindow(QMainWindow):
                 lambda id=pid: self.model.update_positioner_state(id, "ready")
             )
             worker.error.connect(
-                lambda id=pid, e="": self.model.update_positioner_state(id, "error")
+                lambda pid_arg, err_msg, id=pid: self.model.update_positioner_state(id, "error")
             )
             
             self.workers[pid] = worker
@@ -220,5 +213,5 @@ class MainWindow(QMainWindow):
             worker.stop()
 
         #also kill the vimba worker when we get there.
-        event.accept()
+        super().closeEvent(event)
 
