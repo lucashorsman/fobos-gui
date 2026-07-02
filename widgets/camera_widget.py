@@ -99,7 +99,8 @@ class CameraWidget(QWidget, PanZoomMixin):
         # self.physical_pts = [(825, 1650), (1725, 1650), (825, 525), (1725, 525)]
         # self.physical_pts = [(825, -1650), (1725, -1650), (825, -525), (1725, -525)]
         # self.physical_pts = [(825, -525), (1725, -525), (825, -1650), (1725, -1650)]
-        self.physical_pts = [(-1000,1000),(1000,1000),(-1000,-1500),(1000,-1500)]
+        # self.physical_pts = [(-1000,1000),(1000,1000),(-1000,-1500),(1000,-1500)]
+        self.physical_pts = [(-790, 1050), (880, 1030), (-1260, -1080), (1140, -1100)]
         #this is found by counting the number of boxes, then multiplying by GRID_SPACING 
         self.camera_pts = []
         # Calibration: Mapping destination (rectified/physical) to source (camera pixels)
@@ -252,7 +253,6 @@ class CameraWidget(QWidget, PanZoomMixin):
         self.calibration_dialog.close()
         self.calibration_completed.emit()
         
-    # normalize_for_positioner imported from helpers.constants
 
     def get_physical_click_coords(self, event):
         raw_x, raw_y = super().get_physical_click_coords(event)
