@@ -4,6 +4,7 @@
 #this class emits model_updated() whenever the state changes, and the widgets will update themselves accordingly
 
 from PySide6.QtCore import QObject, Signal
+from helpers.constants import PositionerState
 
 class AppModel(QObject):
     model_updated = Signal()
@@ -19,7 +20,7 @@ class AppModel(QObject):
             self.positioners[positioner_id] = {
                 "alpha": 0.0,
                 "beta": 0.0,
-                "state": "ready",
+                "state": PositionerState.READY,
                 "center": center,
                 "queued_target": None,
                 "queued_solutions": [],

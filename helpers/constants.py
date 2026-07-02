@@ -1,6 +1,16 @@
-POSITIONER_READY = "ready"
-POSITIONER_MOVING = "moving"
-POSITIONER_ERROR = "error"
+from enum import StrEnum
+
+
+class PositionerState(StrEnum):
+    """Typed state constants for a positioner.
+    Using StrEnum means PositionerState.READY == "ready" is True, so all
+    existing string comparisons in widgets remain valid without modification.
+    """
+    READY   = "ready"
+    MOVING  = "moving"
+    ERROR   = "error"
+
+
 SHORT_ARM_LENGTH = 100.0  # in mm
 LONG_ARM_LENGTH = 150.0
 GRID_SPACING = 100.0  # in mm

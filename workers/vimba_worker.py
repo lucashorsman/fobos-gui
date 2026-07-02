@@ -24,14 +24,14 @@ class VimbaWorker(QThread):
 
 	@Slot(int)
 	def set_exposure(self, exposure_us: int):
-		print(f"VimbaWorker stub: setting exposure to {exposure_us} \u00B5s")
+		print(f"VimbaWorker stub: setting exposure to {exposure_us} µs")
 		# TODO: implement actual vmbpy camera exposure setting here
 
 	@Slot(float)
 	def set_gain(self, gain_db: float):
 		print(f"VimbaWorker stub: setting gain to {gain_db} dB")
 		# TODO: implement actual vmbpy camera gain setting here
-	
+
 	def run(self):
 		if _VMBPY_IMPORT_ERROR is not None:
 			self.error.emit(

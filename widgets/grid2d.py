@@ -9,7 +9,7 @@ from PySide6.QtGui import QPainter, QPen, QColor, QPainterPath
 from PySide6.QtWidgets import QApplication, QPushButton, QWidget, QVBoxLayout
 
 from helpers.annulus import solve_inverse_kinematics
-from helpers.constants import GRID_SPACING, SHORT_ARM_LENGTH, LONG_ARM_LENGTH, normalize_for_positioner
+from helpers.constants import GRID_SPACING, SHORT_ARM_LENGTH, LONG_ARM_LENGTH
 
 class Grid2d(QWidget, PanZoomMixin):
     move_requested = Signal(int, float, float)
@@ -23,8 +23,6 @@ class Grid2d(QWidget, PanZoomMixin):
         self.setMinimumSize(400, 300)
         self.setWindowTitle("Grid 2D")
         self.positioners_dict = {}
-        self.target_points = []
-        self.target_angles = {}
         self._selected_pid = None
         self.setMouseTracking(True)
         
@@ -73,11 +71,9 @@ class Grid2d(QWidget, PanZoomMixin):
             
             solutions = solve_inverse_kinematics(rel_x, rel_y, SHORT_ARM_LENGTH, LONG_ARM_LENGTH)
             if solutions:
-                normalized_solutions = [
-                    (normalize_for_positioner(a), normalize_for_positioner(b))
-                    for a, b in solutions
-                ]
-                self.move_queued.emit(closest_pid, normalized_solutions)
+                # Emit raw IK solutions; normalization to [-10°, 370°] is applied
+                # once at the hardware dispatch boundary in MainWindow._do_batch_move.
+                self.move_queued.emit(closest_pid, solutions)
 
     def mouseMoveEvent(self, event):
         if self.do_pan(event):
@@ -107,12 +103,5 @@ class Grid2d(QWidget, PanZoomMixin):
         for pid, pos in self.positioners_dict.items():
             is_selected = (pid == self._selected_pid)
             draw_positioner(painter, pid, pos, is_selected, draw_arms=True)
-
-        # Draw Target Points
-        for target in self.target_points:
-            x, y = target
-            painter.setPen(QPen(Qt.red))
-            painter.setBrush(Qt.red)
-            painter.drawEllipse(QPointF(x, y), 5, 5)
 
         painter.restore()

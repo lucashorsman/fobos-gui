@@ -3,18 +3,25 @@ from widgets.grid2d import Grid2d
 from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QLabel
 from PySide6.QtGui import QFont
 from app_model import AppModel
-from PySide6.QtCore import Qt, QEvent
-from workers.positioner_worker import PositionerWorker
+from PySide6.QtCore import Qt, QEvent, Signal, Slot
 from workers.fps_manager import FPSManager
 from workers.vimba_worker import VimbaWorker
 from widgets.camera_widget import CameraWidget
 from widgets.status_bar import StatusBar
 from widgets.control_panel import ControlPanel
-from widgets.view2D import View2D
-from helpers.constants import normalize_for_positioner
+from helpers.constants import PositionerState, normalize_for_positioner
+import asyncio
 import os
 
 class MainWindow(QMainWindow):
+    # Private signals used to dispatch move results back to the main thread
+    # from the FPSManager asyncio loop. These must be class-level Signal
+    # declarations so PySide6 registers them on the QObject metaclass.
+    # The auto-connection (default) becomes a QueuedConnection when the
+    # signal is emitted from a non-main thread, which is exactly what
+    # _do_batch_move does — it runs on the FPSManager's asyncio loop thread.
+    _move_batch_succeeded = Signal(list)  # list of positioner IDs that completed
+    _move_batch_failed = Signal(list)     # list of positioner IDs that errored
 
     def __init__(self):
         super().__init__()
@@ -26,25 +33,12 @@ class MainWindow(QMainWindow):
         self.control_panel = ControlPanel()
         self.grid2D = Grid2d()
         self.camera_widget = CameraWidget()
-        #i guess we can use CSS
-        # self.setStyleSheet("""
-        #     QSplitter::handle {
-        #         background-color: #555555;  /* Color of the handle line */
-        #         margin: 2px;               /* Adds a bit of padding around the line */
-        #         border-radius: 2px;        /* Softens the handle edges */
-        #     }
 
-        #     QSplitter::handle:horizontal {
-        #         width: 6px;                 /* Thickness of the vertical divider line */
-        #     }
-        #     QSplitter::handle:vertical {
-        #         height: 6px;                /* Thickness of the horizontal divider line */
-        #     }
-        # """)
         style_path = os.path.join(os.path.dirname(__file__), "style.qss")
         if os.path.exists(style_path):
             with open(style_path, "r") as f:
                 self.setStyleSheet(f.read())
+
         # create the right-side vertical splitter for Status and Control
         self.right_splitter = QSplitter(Qt.Orientation.Vertical)
         self.right_splitter.addWidget(self.status_bar)
@@ -92,15 +86,21 @@ class MainWindow(QMainWindow):
         self.control_panel.calibrate_requested.connect(self.camera_widget.start_calibration)
         self.camera_widget.calibration_completed.connect(self.control_panel.on_calibration_completed)
         self.control_panel.swap_solution_requested.connect(self.model.swap_solution)
+
+        # Connect thread-safe result signals to main-thread slots.
+        # Because _do_batch_move runs on the FPSManager asyncio loop (a non-main
+        # thread), emitting these signals will be auto-queued to the main thread,
+        # ensuring AppModel is only mutated from the Qt event loop.
+        self._move_batch_succeeded.connect(self._on_batch_move_success)
+        self._move_batch_failed.connect(self._on_batch_move_failure)
         
         self.poller = None
         self.vimba_worker = None
-        self.workers = {}
+        self._fps = None
+        self._fps_loop = None
         
         # Start the poller which will initialize the FPS instance
         self.poller = FPSManager()
-        #get the move_requested signal from the control panel and connect it to the on_move_requested slot in this class, which will forward the request to the appropriate worker 
-        #now, when the control panel emits move_requested, the main window will receive it and call on_move_requested, which will then call request_move on the appropriate PositionerWorker instance, which will call goto.
         self.poller.ready.connect(self.on_fps_ready)
         self.poller.positions_updated.connect(self.model.update_positions)
         self.poller.error.connect(self.on_fps_error)
@@ -113,7 +113,8 @@ class MainWindow(QMainWindow):
         self.camera_widget.gain_changed.connect(self.vimba_worker.set_gain)
         self.vimba_worker.start()
 
-    def _on_model_updated(self): #called when the model emits model_updated, which happens whenever the positioners dict is updated with new positions or states
+    def _on_model_updated(self):
+        """Called when AppModel emits model_updated; re-renders all views."""
         self.status_bar.update_display(self.model.positioners)
         self.grid2D.update_display(self.model.positioners, self.model.selected_positioner_id)
         self.camera_widget.update_display(self.model.positioners, self.model.selected_positioner_id)
@@ -121,17 +122,72 @@ class MainWindow(QMainWindow):
         self.control_panel.update_queue_state(self.model.positioners)
 
     def on_batch_move_requested(self):
+        """Send all queued targets to hardware in a single CAN bus transaction."""
+        if not self._fps or not self._fps_loop:
+            return
+
         queued_moves = self.model.get_queued_moves()
-        for pid, (alpha, beta) in queued_moves.items():
-            self.on_move_requested(pid, alpha, beta)
+        if not queued_moves:
+            return
+
+        # Mark all queued positioners as moving before dispatching.
+        for pid in queued_moves:
+            self.model.update_positioner_state(pid, PositionerState.MOVING)
         self.model.clear_queued_moves()
 
-    def on_move_requested(self, pid: int, alpha: float, beta: float):
-        if pid in self.workers:
-            alpha = normalize_for_positioner(alpha)
-            beta = normalize_for_positioner(beta)
-            self.workers[pid].request_move(alpha, beta)
+        asyncio.run_coroutine_threadsafe(
+            self._do_batch_move(queued_moves), self._fps_loop
+        )
 
+    def on_move_requested(self, pid: int, alpha: float, beta: float):
+        """Single-positioner move from the manual entry panel.
+
+        Routes through the same batch coroutine as multi-positioner moves.
+        NOTE: Concurrent rapid-fire calls are not guarded by a lock. An
+        asyncio.Lock on _do_batch_move could prevent a second move from being
+        submitted while the first is in-flight, but this path is a backup tool
+        for manual correction — high-frequency use is not expected.
+        """
+        if not self._fps or not self._fps_loop:
+            return
+        self.model.update_positioner_state(pid, PositionerState.MOVING)
+        asyncio.run_coroutine_threadsafe(
+            self._do_batch_move({pid: (alpha, beta)}), self._fps_loop
+        )
+
+    async def _do_batch_move(self, targets: dict):
+        """Execute a multi-positioner goto on the FPSManager asyncio loop.
+
+        Args:
+            targets: {pid: (alpha_deg, beta_deg)} — raw angles (not yet normalized).
+
+        Normalization into the hardware range [-10°, 370°] is done here, at the
+        single hardware-dispatch boundary, so widgets can store raw IK output.
+        Results are dispatched back to the main thread via the
+        _move_batch_succeeded / _move_batch_failed signals.
+        """
+        normalized = {
+            pid: (normalize_for_positioner(a), normalize_for_positioner(b))
+            for pid, (a, b) in targets.items()
+        }
+        try:
+            await self._fps.goto(normalized)
+            self._move_batch_succeeded.emit(list(normalized.keys()))
+        except Exception as e:
+            print(f"Batch move error: {e}")
+            self._move_batch_failed.emit(list(normalized.keys()))
+
+    @Slot(list)
+    def _on_batch_move_success(self, pids: list):
+        """Called on the main thread after a successful batch goto."""
+        for pid in pids:
+            self.model.update_positioner_state(pid, PositionerState.READY)
+
+    @Slot(list)
+    def _on_batch_move_failure(self, pids: list):
+        """Called on the main thread after a failed batch goto."""
+        for pid in pids:
+            self.model.update_positioner_state(pid, PositionerState.ERROR)
 
     def on_swap_views_requested(self):
         view_main = self.current_main_view
@@ -161,9 +217,11 @@ class MainWindow(QMainWindow):
         self.current_small_view.swap_button.setVisible(True)
 
     def on_fps_ready(self, fps, loop):
+        self._fps = fps
+        self._fps_loop = loop
         # Discover all connected positioners
         print(fps.positioners.items())
-        x= 100
+        x = 100
         for pid, pos in fps.positioners.items():
             
             # center = getattr(pos, 'center', (0.0, 0.0))
@@ -171,26 +229,11 @@ class MainWindow(QMainWindow):
             x+=100
             self.model.register_positioner(pid, center=center)
             
-            worker = PositionerWorker(fps, loop, positioner_id=pid)
-            
-            # Use default argument lambda id=pid to correctly capture the variable in the loop
-            worker.move_started.connect(
-                lambda id=pid: self.model.update_positioner_state(id, "moving")
-            )
-            worker.move_done.connect(
-                lambda id=pid: self.model.update_positioner_state(id, "ready")
-            )
-            worker.error.connect(
-                lambda pid_arg, err_msg, id=pid: self.model.update_positioner_state(id, "error")
-            )
-            
-            self.workers[pid] = worker
-            
-        # Update dropdown
+        # Update UI controls with discovered positioner IDs
         self.control_panel.update_positioners(self.model.positioners.keys())
         self.grid2D.update_positioners(self.model.positioners.keys())
             
-        print(f"FPS initialized, {len(self.workers)} workers started")
+        print(f"FPS initialized, {len(self.model.positioners)} positioners registered")
         print(f"pids in use: {self.model.positioners.keys()}")
 
     def on_fps_error(self, err_msg=""):
@@ -214,9 +257,4 @@ class MainWindow(QMainWindow):
             self.vimba_worker.stop()
         if self.poller:
             self.poller.stop()
-        for worker in self.workers.values():
-            worker.stop()
-
-        #also kill the vimba worker when we get there.
         super().closeEvent(event)
-

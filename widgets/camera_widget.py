@@ -6,11 +6,12 @@ import math
 from PySide6.QtCore import QPoint, QPointF, Qt, Slot, Signal, QRectF, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QImage, QPainter, QTransform, QPen, QPainterPath, QColor   
 from PySide6.QtWidgets import QLabel, QListWidget, QMessageBox, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QDialog, QFormLayout, QLineEdit, QSlider
-from helpers.constants import SHORT_ARM_LENGTH, LONG_ARM_LENGTH, GRID_SPACING, normalize_for_positioner
+from helpers.constants import SHORT_ARM_LENGTH, LONG_ARM_LENGTH, GRID_SPACING
 from helpers.annulus import solve_inverse_kinematics
 from helpers.projection import PositionerProjection
 from helpers.drawing import draw_positioner, draw_coordinate_grid
 from helpers.geometry import get_clicked_positioner
+from helpers.calibration_io import save_calibration, load_calibration, is_valid_calibration_quad
 from widgets.pan_zoom_mixin import PanZoomMixin
 
 
@@ -94,30 +95,23 @@ class CameraWidget(QWidget, PanZoomMixin):
 
         self.projection = PositionerProjection()
         self.target_offset = None
-        # Z-order (reading order): Top-Left, Top-Right, Bottom-Left, Bottom-Right
-        # self.physical_pts = [(825, 525), (1725, 525), (825, 1650), (1725, 1650)]
-        # self.physical_pts = [(825, 1650), (1725, 1650), (825, 525), (1725, 525)]
-        # self.physical_pts = [(825, -1650), (1725, -1650), (825, -525), (1725, -525)]
-        # self.physical_pts = [(825, -525), (1725, -525), (825, -1650), (1725, -1650)]
-        # self.physical_pts = [(-1000,1000),(1000,1000),(-1000,-1500),(1000,-1500)]
+        # Active physical reference points (TL, TR, BL, BR) in positioner mm coordinates.
+        # These define what the 4 clicked camera points map TO during calibration.
         self.physical_pts = [(-790, 1050), (880, 1030), (-1260, -1080), (1140, -1100)]
-        #this is found by counting the number of boxes, then multiplying by GRID_SPACING 
         self.camera_pts = []
-        # Calibration: Mapping destination (rectified/physical) to source (camera pixels)
-        # Using highly distorted camera points (a steep trapezoid) to test the projection warp!
-        # self.projection.calibrate(
-        #     physical_pts=[(825, 525), (1725, 525), (825, 1650), (1725, 1650)],
-        #     camera_pts=[(800, 300), (1100, 300), (200, 900), (1700, 900)]
-        # )
-        #less insane projection from jchen
-        # self.projection.calibrate(
-        # physical_pts=[(825, 525), (1725, 525), (825, 1650), (1725, 1650)],
-        # camera_pts=[(825, 525), (1725, 525), (825, 1650), (1725, 1650)]
-        # )
-        # self.projection.calibrate(
-        #     physical_pts=[(0, 100), (100, 100), (0, 0), (100, 0)],
-        #     camera_pts=[(100, 100), (1100, 100), (100, 1000), (1100, 1000)] 
-        # )
+
+        # Attempt to restore a previously saved calibration from disk
+        saved = load_calibration()
+        if saved is not None:
+            physical_pts, camera_pts = saved
+            self.physical_pts = list(physical_pts)
+            self.camera_pts = list(camera_pts)
+            try:
+                self.projection.calibrate(self.physical_pts, self.camera_pts)
+                print("CameraWidget: calibration restored from disk")
+            except Exception as e:
+                print(f"CameraWidget: failed to restore calibration: {e}")
+                self.camera_pts = []
         
         # UI overlays
         layout = QVBoxLayout(self)
@@ -251,6 +245,12 @@ class CameraWidget(QWidget, PanZoomMixin):
         self._calibration_mode = False
         self.calibration_dialog.allow_close = True
         self.calibration_dialog.close()
+        # Persist the calibration so it is restored automatically on the next launch
+        try:
+            save_calibration(self.physical_pts, self.camera_pts)
+            print("CameraWidget: calibration written to disk")
+        except Exception as e:
+            print(f"CameraWidget: failed to save calibration: {e}")
         self.calibration_completed.emit()
         
 
@@ -275,16 +275,23 @@ class CameraWidget(QWidget, PanZoomMixin):
                 if len(self.camera_pts) < 4:
                     self.instruction_label.setText(f"Points collected: {len(self.camera_pts)}/4\nClick the next corner.")
                 elif len(self.camera_pts) == 4:
-                    self.instruction_label.setText("4 points collected!\nPreviewing projection...")
+                    self.instruction_label.setText("4 points collected!\nValidating and previewing projection...")
                     self.finish_button.setEnabled(True)
                     self.redo_button.setEnabled(True)
-                    
-                    try:
-                        self.projection.calibrate(self.physical_pts, self.camera_pts)
-                    except Exception as e:
-                        self.instruction_label.setText("Error during calibration! Please click 'Redo'.")
+
+                    if not is_valid_calibration_quad(self.camera_pts):
+                        self.instruction_label.setText(
+                            "Points are nearly collinear or cover too small an area.\n"
+                            "Please click 'Redo' and choose more spread-out corners."
+                        )
                         self.finish_button.setEnabled(False)
-                    
+                    else:
+                        try:
+                            self.projection.calibrate(self.physical_pts, self.camera_pts)
+                        except Exception:
+                            self.instruction_label.setText("Error during calibration! Please click 'Redo'.")
+                            self.finish_button.setEnabled(False)
+
                     self.update()
             return
         if not self.projection.is_calibrated:
@@ -316,11 +323,9 @@ class CameraWidget(QWidget, PanZoomMixin):
         # Calculate IK
         solutions = solve_inverse_kinematics(rel_x, rel_y, SHORT_ARM_LENGTH, LONG_ARM_LENGTH)
         if solutions:
-            normalized_solutions = [
-                (normalize_for_positioner(a), normalize_for_positioner(b))
-                for a, b in solutions
-            ]
-            self.move_queued.emit(closest_pid, normalized_solutions)
+            # Emit raw IK solutions; normalization to [-10°, 370°] is applied
+            # once at the hardware dispatch boundary in MainWindow._do_batch_move.
+            self.move_queued.emit(closest_pid, solutions)
 
         self.update()
       
