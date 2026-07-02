@@ -1,6 +1,7 @@
 """Widget for displaying live Vimba camera frames."""
 
 from __future__ import annotations
+from PySide6.QtCore import QTimer
 
 import math
 from PySide6.QtCore import QPoint, QPointF, Qt, Slot, Signal, QRectF, QPropertyAnimation, QEasingCurve
@@ -98,6 +99,7 @@ class CameraWidget(QWidget, PanZoomMixin):
         # Active physical reference points (TL, TR, BL, BR) in positioner mm coordinates.
         # These define what the 4 clicked camera points map TO during calibration.
         self.physical_pts = [(-790, 1050), (880, 1030), (-1260, -1080), (1140, -1100)]
+        #this is found by counting the number of boxes, then multiplying by GRID_SPACING 
         self.camera_pts = []
 
         # Attempt to restore a previously saved calibration from disk
@@ -108,6 +110,7 @@ class CameraWidget(QWidget, PanZoomMixin):
             self.camera_pts = list(camera_pts)
             try:
                 self.projection.calibrate(self.physical_pts, self.camera_pts)
+                QTimer.singleShot(0, self.calibration_completed.emit)
                 print("CameraWidget: calibration restored from disk")
             except Exception as e:
                 print(f"CameraWidget: failed to restore calibration: {e}")
