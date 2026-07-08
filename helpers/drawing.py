@@ -11,6 +11,8 @@ def draw_positioner(painter, pid, pos_info, is_selected, draw_arms=True):
     
     painter.save()
     painter.translate(cx, cy)
+    # The physical hardware's local kinematic X and Y axes are inverted relative to the global axes.
+    painter.scale(-1, -1)
 
     if is_selected:
         pen = QPen(Qt.green)
@@ -90,8 +92,11 @@ def draw_positioner(painter, pid, pos_info, is_selected, draw_arms=True):
         painter.setPen(QColor(200, 200, 200, 150))
         
     painter.save()
-    if painter.transform().m22() < 0:
-        painter.scale(1, -1)
+    t = painter.transform()
+    scale_x = -1 if t.m11() < 0 else 1
+    scale_y = -1 if t.m22() < 0 else 1
+    if scale_x != 1 or scale_y != 1:
+        painter.scale(scale_x, scale_y)
     rect = QRectF(-50, -50, 100, 100)
     painter.drawText(rect, Qt.AlignCenter, str(pid))
     painter.restore()

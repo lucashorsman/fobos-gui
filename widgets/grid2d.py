@@ -69,7 +69,9 @@ class Grid2d(QWidget, PanZoomMixin):
             rel_x = phys_x - cx
             rel_y = phys_y - cy
             
-            solutions = solve_inverse_kinematics(rel_x, rel_y, SHORT_ARM_LENGTH, LONG_ARM_LENGTH)
+            # Calculate IK
+            # The positioner's kinematic frame is rotated by 180 degrees (inverted X and Y)
+            solutions = solve_inverse_kinematics(-rel_x, -rel_y, SHORT_ARM_LENGTH, LONG_ARM_LENGTH)
             if solutions:
                 # Emit raw IK solutions; normalization to [-10°, 370°] is applied
                 # once at the hardware dispatch boundary in MainWindow._do_batch_move.
