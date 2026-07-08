@@ -159,9 +159,16 @@ class MainWindow(QMainWindow):
         self.control_panel.update_selected_positioner(self.model.selected_positioner_id)
         self.control_panel.update_queue_state(self.model.positioners)
 
+    def _is_any_moving(self) -> bool:
+        return any(pos.get("state") == PositionerState.MOVING for pos in self.model.positioners.values())
+
     def on_batch_move_requested(self):
         """Send all queued targets to hardware in a single CAN bus transaction."""
         if not self._fps or not self._fps_loop:
+            return
+        
+        if self._is_any_moving():
+            print("Move already in progress, ignoring batch move request.")
             return
 
         queued_moves = self.model.get_queued_moves()
@@ -187,6 +194,10 @@ class MainWindow(QMainWindow):
         for manual correction — high-frequency use is not expected.
         """
         if not self._fps or not self._fps_loop:
+            return
+        
+        if self._is_any_moving():
+            print("Move already in progress, ignoring single move request.")
             return
         self.model.update_positioner_state(pid, PositionerState.MOVING)
         asyncio.run_coroutine_threadsafe(

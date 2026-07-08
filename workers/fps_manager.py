@@ -3,9 +3,8 @@ import traceback
 import os
 import time
 from PySide6.QtCore import QThread, Signal
-from jaeger.core import FPS
 
-POLL_INTERVAL = 1 / 3
+POLL_INTERVAL = 1 / 5
 
 class FPSManager(QThread):
     ready = Signal(object, object)  # (fps, loop)

@@ -152,26 +152,31 @@ class ControlPanel(QWidget):
         has_error = False
 
         for pid, pos in positioners_dict.items():
+            state = pos.get("state", "ready")
+            if state == "moving":
+                has_moving = True
+                
             if pos.get("queued_target") is not None:
                 queued_count += 1
-                state = pos.get("state", "ready")
-                if state == "moving":
-                    has_moving = True
-                elif state == "error":
+                if state == "error":
                     has_error = True
 
-        if queued_count == 0:
-            self.send_queue_button.setText("No Queued Targets")
-            self.send_queue_button.setEnabled(False)
-        elif has_moving:
+        if has_moving:
             self.send_queue_button.setText("Moving...")
             self.send_queue_button.setEnabled(False)
+            self.go_button.setEnabled(False)
+        elif queued_count == 0:
+            self.send_queue_button.setText("No Queued Targets")
+            self.send_queue_button.setEnabled(False)
+            self.go_button.setEnabled(True)
         elif has_error:
             self.send_queue_button.setText("Error")
             self.send_queue_button.setEnabled(False)
+            self.go_button.setEnabled(True)
         else:
             self.send_queue_button.setText(f"Send {queued_count} Target{'s' if queued_count > 1 else ''}")
             self.send_queue_button.setEnabled(True)
+            self.go_button.setEnabled(True)
 
         current_pid = self.pid_combo.currentData()
         if current_pid is not None and current_pid in positioners_dict:
