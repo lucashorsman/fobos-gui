@@ -8,12 +8,25 @@ from helpers.constants import PositionerState
 
 class AppModel(QObject):
     model_updated = Signal()
+    connection_updated = Signal()
 
     def __init__(self):
         super().__init__()
         self.positioners = {}
         self.selected_positioner_id = None
+        self.fps_connected = False
+        self.camera_connected = False
         # {id: {"alpha": 0.0, "beta": 0.0, "state": "ready"}}
+
+    def set_fps_connected(self, connected: bool):
+        if self.fps_connected != connected:
+            self.fps_connected = connected
+            self.connection_updated.emit()
+
+    def set_camera_connected(self, connected: bool):
+        if self.camera_connected != connected:
+            self.camera_connected = connected
+            self.connection_updated.emit()
 
     def register_positioner(self, positioner_id: int, center=(0.0, 0.0)):
         if positioner_id not in self.positioners:

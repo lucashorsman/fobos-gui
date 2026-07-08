@@ -17,6 +17,7 @@ except Exception as exc:  # pragma: no cover - import/runtime specific
 class VimbaWorker(QThread):
 	frame_ready = Signal(object)
 	error = Signal(str)
+	connection_status = Signal(bool)
 
 	def __init__(self, parent=None):
 		super().__init__(parent)
@@ -37,6 +38,7 @@ class VimbaWorker(QThread):
 			self.error.emit(
 				"Vimba camera support is unavailable: install the vmbpy package and the matching Vimba X runtime."
 			)
+			self.connection_status.emit(False)
 			return
 
 		self._running = True
@@ -45,6 +47,7 @@ class VimbaWorker(QThread):
 				cameras = vmb.get_all_cameras()
 				if not cameras:
 					self.error.emit("No Vimba cameras found.")
+					self.connection_status.emit(False)
 					return
 
 				with cameras[0] as cam:
@@ -53,6 +56,7 @@ class VimbaWorker(QThread):
 					except Exception:
 						cam.set_pixel_format(PixelFormat.Mono8)
 
+					self.connection_status.emit(True)
 					while self._running and not self.isInterruptionRequested():
 						frame = cam.get_frame()
 						image = frame.as_opencv_image().copy()
@@ -60,8 +64,10 @@ class VimbaWorker(QThread):
 						# print("VimbaWorker: Frame emitted")
 		except Exception as exc:
 			self.error.emit(str(exc))
+			self.connection_status.emit(False)
 		finally:
 			self._running = False
+			self.connection_status.emit(False)
 
 	def stop(self):
 		self._running = False

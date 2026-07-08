@@ -120,6 +120,15 @@ which now owns the `FPS` instance for the lifetime of the application.
 
 Configuration lives in `~/.jaeger.yaml` (CAN@net IP and bus settings).
 
+#### Connection Drops and Timeouts
+
+The underlying CAN network (often CAN@net) connection can sometimes drop or be interrupted, causing Python's `asyncio` or CAN socket to emit a `socket.send() raised exception.` error in standard output. 
+
+When this happens:
+- The `jaeger-core` connection becomes permanently dead since it lacks an auto-reconnect mechanism.
+- Subsequent calls to `FPS.update_position()` will silently fail, logging `[WARNING] GET_ACTUAL_POSITION timed out. Retrying.` but returning cached values rather than raising an exception.
+- To detect this in the GUI, `FPSManager` times how long `update_position()` takes. Normal execution is fast, but if it takes significantly longer (e.g., > 1.5s) over several consecutive cycles, it indicates a dead connection. `FPSManager` will emit `connection_status(False)` and allow the operator to use the "Reconnect FPS" button to safely destroy and re-initialize a fresh `FPS` instance.
+
 ### vmbpy
 
 `vmbpy` does not have a macOS wheel on PyPI. Use the platform-neutral `any`

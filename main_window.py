@@ -74,6 +74,7 @@ class MainWindow(QMainWindow):
         
         # Wire up UI to model and actions
         self.model.model_updated.connect(self._on_model_updated)
+        self.model.connection_updated.connect(self._on_connection_updated)
         self.control_panel.move_requested.connect(self.on_move_requested)
         self.grid2D.move_queued.connect(self.model.queue_move)
         self.camera_widget.move_queued.connect(self.model.queue_move)
@@ -86,6 +87,8 @@ class MainWindow(QMainWindow):
         self.control_panel.calibrate_requested.connect(self.camera_widget.start_calibration)
         self.camera_widget.calibration_completed.connect(self.control_panel.on_calibration_completed)
         self.control_panel.swap_solution_requested.connect(self.model.swap_solution)
+        self.status_bar.reconnect_fps_requested.connect(self.reconnect_fps)
+        self.status_bar.reconnect_camera_requested.connect(self.reconnect_camera)
 
         # Connect thread-safe result signals to main-thread slots.
         # Because _do_batch_move runs on the FPSManager asyncio loop (a non-main
@@ -104,14 +107,49 @@ class MainWindow(QMainWindow):
         self.poller.ready.connect(self.on_fps_ready)
         self.poller.positions_updated.connect(self.model.update_positions)
         self.poller.error.connect(self.on_fps_error)
+        self.poller.connection_status.connect(self.model.set_fps_connected)
         self.poller.start()
 
         self.vimba_worker = VimbaWorker(self)
         self.vimba_worker.frame_ready.connect(self.camera_widget.update_frame, Qt.QueuedConnection)
         self.vimba_worker.error.connect(self.on_vimba_error)
+        self.vimba_worker.connection_status.connect(self.model.set_camera_connected)
         self.camera_widget.exposure_changed.connect(self.vimba_worker.set_exposure)
         self.camera_widget.gain_changed.connect(self.vimba_worker.set_gain)
         self.vimba_worker.start()
+
+    def reconnect_fps(self):
+        if self.poller:
+            self.poller.stop()
+            self.poller.deleteLater()
+            
+        self.model.set_fps_connected(False)
+        self._fps = None
+        self._fps_loop = None
+        
+        self.poller = FPSManager()
+        self.poller.ready.connect(self.on_fps_ready)
+        self.poller.positions_updated.connect(self.model.update_positions)
+        self.poller.error.connect(self.on_fps_error)
+        self.poller.connection_status.connect(self.model.set_fps_connected)
+        self.poller.start()
+
+    def reconnect_camera(self):
+        if self.vimba_worker:
+            self.vimba_worker.stop()
+            self.vimba_worker.deleteLater()
+            
+        self.model.set_camera_connected(False)
+        self.vimba_worker = VimbaWorker(self)
+        self.vimba_worker.frame_ready.connect(self.camera_widget.update_frame, Qt.QueuedConnection)
+        self.vimba_worker.error.connect(self.on_vimba_error)
+        self.vimba_worker.connection_status.connect(self.model.set_camera_connected)
+        self.camera_widget.exposure_changed.connect(self.vimba_worker.set_exposure)
+        self.camera_widget.gain_changed.connect(self.vimba_worker.set_gain)
+        self.vimba_worker.start()
+
+    def _on_connection_updated(self):
+        self.status_bar.update_connections(self.model.fps_connected, self.model.camera_connected)
 
     def _on_model_updated(self):
         """Called when AppModel emits model_updated; re-renders all views."""
@@ -225,7 +263,12 @@ class MainWindow(QMainWindow):
         for pid, pos in fps.positioners.items():
             
             # center = getattr(pos, 'center', (0.0, 0.0))
-            center = (x, 500.0)
+            if pid == 1403:
+                center = (-36.83078, -130.32223)
+            elif pid == 967:
+                center = (0.50013, 499.49927)
+            else:
+                center = (x, 500.0)
             x+=100
             self.model.register_positioner(pid, center=center)
             

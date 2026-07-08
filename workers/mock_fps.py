@@ -50,3 +50,11 @@ class MockFPS:
                     self.positioners[pid].beta = beta
         
         return True
+
+    async def shutdown(self):
+        """Simulates jaeger-core's teardown sequence."""
+        try:
+            loop = asyncio.get_running_loop()
+            loop.stop()
+        except RuntimeError:
+            pass

@@ -98,7 +98,7 @@ class CameraWidget(QWidget, PanZoomMixin):
         self.target_offset = None
         # Active physical reference points (TL, TR, BL, BR) in positioner mm coordinates.
         # These define what the 4 clicked camera points map TO during calibration.
-        self.physical_pts = [(-790, 1050), (880, 1030), (-1260, -1080), (1140, -1100)]
+        # self.physical_pts = [(-790, 1050), (880, 1030), (-1260, -1080), (1140, -1100)]
         #this is found by counting the number of boxes, then multiplying by GRID_SPACING 
         self.camera_pts = []
 

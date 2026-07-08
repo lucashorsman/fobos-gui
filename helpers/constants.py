@@ -10,9 +10,14 @@ class PositionerState(StrEnum):
     MOVING  = "moving"
     ERROR   = "error"
 
+#total patrol area should equal 44.8mm diameter.
+#so arm1 + arm2 = 22.4mm
 
+# SHORT_ARM_LENGTH =7.0  # in mm
+# LONG_ARM_LENGTH = 15.4 # in mm
 SHORT_ARM_LENGTH = 100.0  # in mm
 LONG_ARM_LENGTH = 150.0
+
 GRID_SPACING = 100.0  # in mm
 
 
