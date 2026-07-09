@@ -41,9 +41,20 @@ class FPSManager(QThread):
                 self._fps = MockFPS(num_positioners=5)
             else:
                 from jaeger.core import FPS
-                # Create a clean, new FPS instance. 
-                # Since we properly call shutdown() on teardown, there's no need to manually discard old instances.
-                self._fps = FPS()
+
+                # Tear down any stale singleton left over from a previous failed
+                # connection attempt.  If FPS() raises "already running", retrieve
+                # the existing instance and shut it down so we can start fresh.
+                try:
+                    self._fps = FPS()
+                except Exception:
+                    try:
+                        stale = FPS.get_instance()
+                        if stale is not None:
+                            await stale.shutdown()
+                    except Exception:
+                        pass
+                    self._fps = FPS()
 
             await self._fps.initialise()
             
@@ -61,7 +72,16 @@ class FPSManager(QThread):
             print(f"FPSManager main loop error: {e}")
             self.error.emit(str(e))
             self.connection_status.emit(False)
-            # If initialization fails, we must manually stop the loop since shutdown() won't be called.
+            # Shut down the partially-constructed FPS instance so its singleton
+            # registration is cleared and the next reconnect attempt can create
+            # a fresh one without hitting "An instance of FPS is already running."
+            if self._fps is not None and hasattr(self._fps, "shutdown"):
+                try:
+                    await self._fps.shutdown()
+                except Exception:
+                    pass
+                self._fps = None
+            # Stop the event loop — shutdown() won't be called from outside.
             self._loop.stop()
 
     async def _poll_loop(self):
