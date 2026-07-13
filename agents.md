@@ -137,7 +137,7 @@ to know about both workers and widgets simultaneously.
 | `error(str)` | `FPSManager` | `MainWindow.on_fps_error` |
 | `connection_status(bool)` | `FPSManager` | `AppModel.set_fps_connected` |
 | `frame_ready(np.ndarray)` | `VimbaWorker` / `StreamWorker` | `CameraWidget.update_frame` (QueuedConnection) |
-| `error(str)` | `VimbaWorker` / `StreamWorker` | `MainWindow.on_vimba_error` |
+| `error(str)` | `VimbaWorker` / `StreamWorker` | `MainWindow.on_camera_error` |
 | `connection_status(bool)` | `VimbaWorker` / `StreamWorker` | `AppModel.set_camera_connected` |
 | `model_updated()` | `AppModel` | `MainWindow._on_model_updated` → all widgets |
 | `connection_updated()` | `AppModel` | `MainWindow._on_connection_updated` → `StatusBar.update_connections` |
@@ -151,8 +151,8 @@ to know about both workers and widgets simultaneously.
 | `swap_requested()` | `Grid2d` / `CameraWidget` | `MainWindow.on_swap_views_requested` |
 | `reconnect_fps_requested()` | `StatusBar` | `MainWindow.reconnect_fps` |
 | `reconnect_camera_requested()` | `StatusBar` | `MainWindow.reconnect_camera` |
-| `exposure_changed(int)` | `CameraWidget` | `VimbaWorker.set_exposure` / `StreamWorker.set_exposure` |
-| `gain_changed(float)` | `CameraWidget` | `VimbaWorker.set_gain` / `StreamWorker.set_gain` |
+| `exposure_changed(int)` | `CameraWidget` | `MainWindow._on_exposure_changed` → `camera_worker.set_exposure` |
+| `gain_changed(float)` | `CameraWidget` | `MainWindow._on_gain_changed` → `camera_worker.set_gain` |
 | `laser_status_received(dict)` | `StreamWorker` | (Future laser UI) |
 | `_move_batch_succeeded(list)` | `MainWindow` (asyncio thread) | `MainWindow._on_batch_move_success` |
 | `_move_batch_failed(list)` | `MainWindow` (asyncio thread) | `MainWindow._on_batch_move_failure` |

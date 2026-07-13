@@ -48,6 +48,7 @@ class StreamWorker(QThread):
 
         self._loop: asyncio.AbstractEventLoop | None = None
         self._running = False
+        self._shutdown = False  # True during deliberate stop(); suppresses spurious signals
         self._control_ws = None
 
     # ---- QThread entry point ------------------------------------------------
@@ -58,10 +59,17 @@ class StreamWorker(QThread):
         asyncio.set_event_loop(self._loop)
         try:
             self._loop.run_until_complete(self._main())
+        except RuntimeError as exc:
+            # loop.stop() called while run_until_complete was in flight — this is
+            # the expected path when stop() fires during a sleep/await between
+            # reconnect attempts. Only warn if this was NOT a deliberate shutdown.
+            if not self._shutdown:
+                logger.warning("StreamWorker event loop stopped unexpectedly: %s", exc)
         finally:
             self._loop.close()
 
     def stop(self):
+        self._shutdown = True
         self._running = False
         if self._loop and self._loop.is_running():
             self._loop.call_soon_threadsafe(self._loop.stop)
@@ -78,11 +86,13 @@ class StreamWorker(QThread):
     async def _video_loop(self):
         uri = f"ws://{self.host}:{self.port}/video"
         self.connection_status.emit(False)  # initialise GUI state before first attempt
+        _error_logged = False
         while self._running:
             try:
                 async with websockets.connect(uri, max_size=None) as ws:
                     logger.info("Connected to video stream at %s", uri)
                     self.connection_status.emit(True)
+                    _error_logged = False  # reset so the next drop is reported
                     async for message in ws:
                         frame = cv2.imdecode(
                             np.frombuffer(message, dtype=np.uint8), cv2.IMREAD_COLOR
@@ -90,20 +100,26 @@ class StreamWorker(QThread):
                         if frame is not None:
                             self.frame_ready.emit(frame)
             except Exception as exc:
-                logger.warning("Video connection lost/failed: %s", exc)
-                self.connection_status.emit(False)
-                self.error.emit(str(exc))
+                if not self._shutdown and not _error_logged:
+                    # Demoted to debug so the warning doesn't double-print alongside
+                    # on_camera_error; error() is the single user-facing notification.
+                    logger.debug("Video connection lost/failed: %s", exc)
+                    self.connection_status.emit(False)
+                    self.error.emit(str(exc))
+                    _error_logged = True
             if self._running:
                 await asyncio.sleep(self.reconnect_delay)
 
 
     async def _control_loop(self):
         uri = f"ws://{self.host}:{self.port}/control"
+        _error_logged = False
         while self._running:
             try:
                 async with websockets.connect(uri) as ws:
                     logger.info("Connected to control channel at %s", uri)
                     self._control_ws = ws
+                    _error_logged = False  # reset so the next drop is reported
                     async for message in ws:
                         try:
                             reply = json.loads(message)
@@ -112,8 +128,11 @@ class StreamWorker(QThread):
                         if "status" in reply:
                             self.laser_status_received.emit(reply["status"])
             except Exception as exc:
-                logger.warning("Control connection lost/failed: %s", exc)
-                self.error.emit(str(exc))
+                if not self._shutdown and not _error_logged:
+                    # Control channel failure is secondary — the video loop already
+                    # notified the user. Log at debug level only; don't emit error().
+                    logger.debug("Control connection lost/failed: %s", exc)
+                    _error_logged = True
             finally:
                 self._control_ws = None
             if self._running:
@@ -121,7 +140,7 @@ class StreamWorker(QThread):
 
     def _send_control_command(self, payload: dict):
         """Thread-safe: schedules a send onto the worker's own event loop."""
-        if self._loop is None or self._control_ws is None:
+        if self._loop is None or self._loop.is_closed() or self._control_ws is None:
             logger.warning("Control channel not connected, dropping command: %s", payload)
             return
         asyncio.run_coroutine_threadsafe(

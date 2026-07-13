@@ -102,6 +102,12 @@ class MainWindow(QMainWindow):
         self.status_bar.reconnect_fps_requested.connect(self.reconnect_fps)
         self.status_bar.reconnect_camera_requested.connect(self.reconnect_camera)
 
+        # Camera settings are routed through stable MainWindow intermediaries so
+        # that the camera_widget to camera_worker connection is never direct.
+        # This avoids stale connections when the worker is replaced on reconnect.
+        self.camera_widget.exposure_changed.connect(self._on_exposure_changed)
+        self.camera_widget.gain_changed.connect(self._on_gain_changed)
+
         # Connect thread-safe result signals to main-thread slots.
         # Because _do_batch_move runs on the FPSManager asyncio loop (a non-main
         # thread), emitting these signals will be auto-queued to the main thread,
@@ -161,12 +167,28 @@ class MainWindow(QMainWindow):
         return VimbaWorker(self)
 
     def _connect_camera_worker(self):
-        """Wire the camera worker signals/slots (identical for both backends)."""
+        """Wire the camera worker signals/slots (identical for both backends).
+
+        Only worker→UI/model connections are made here. The UI→worker direction
+        (exposure, gain) is routed through permanent MainWindow intermediary slots
+        so there are no stale connections to clean up when the worker is replaced on reconnect.
+        """
         self.camera_worker.frame_ready.connect(self.camera_widget.update_frame, Qt.QueuedConnection)
-        self.camera_worker.error.connect(self.on_vimba_error)
+        self.camera_worker.error.connect(self.on_camera_error)
         self.camera_worker.connection_status.connect(self.model.set_camera_connected)
-        self.camera_widget.exposure_changed.connect(self.camera_worker.set_exposure)
-        self.camera_widget.gain_changed.connect(self.camera_worker.set_gain)
+
+    # Camera settings intermediaries
+    @Slot(int)
+    def _on_exposure_changed(self, val: int):
+        """Forward exposure changes to whichever camera worker is currently live."""
+        if self.camera_worker:
+            self.camera_worker.set_exposure(val)
+
+    @Slot(float)
+    def _on_gain_changed(self, val: float):
+        """Forward gain changes to whichever camera worker is currently live."""
+        if self.camera_worker:
+            self.camera_worker.set_gain(val)
 
     def _on_connection_updated(self):
         self.status_bar.update_connections(self.model.fps_connected, self.model.camera_connected)
@@ -313,8 +335,8 @@ class MainWindow(QMainWindow):
     def on_fps_error(self, err_msg=""):
         print(f"Error initializing FPS: {err_msg}")
 
-    def on_vimba_error(self, err_msg=""):
-        print(f"Error initializing Vimba camera: {err_msg}")
+    def on_camera_error(self, err_msg=""):
+        print(f"Camera error ({_CAMERA_BACKEND}): {err_msg}")
 
     def eventFilter(self, obj, event):
         if event.type() == QEvent.Type.MouseMove:
