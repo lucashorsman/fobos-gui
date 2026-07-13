@@ -45,6 +45,7 @@ fobos-gui/                        # repo root
 │   ├── fps_manager.py            # QThread. Owns FPS init, asyncio loop, 5 Hz poll.
 │   ├── positioner_worker.py      # QObject. CURRENTLY UNUSED — kept for reference (see note).
 │   ├── mock_fps.py               # MockFPS / MockPositioner — enabled via FOBOS_MOCK=1.
+│   ├── stream_worker.py          # QThread. Streams from RPi5 camera bridge via WebSockets.
 │   └── vimba_worker.py           # QThread. Owns vmbpy camera session and streaming.
 └── widgets/
     ├── camera_widget.py          # Live frame display, projected positioner overlay, click-to-queue.
@@ -80,9 +81,10 @@ There are three threads:
   `positions_updated(dict)`. The asyncio loop runs with `loop.run_forever()` and
   is stopped by jaeger-core's `fps.shutdown()` (which calls `loop.stop()`
   internally).
-- **`VimbaWorker` thread** — Owns the vmbpy camera session for the lifetime of
-  the app. Streams frames with a synchronous polling loop (`cam.get_frame()`)
+- **`VimbaWorker` / `StreamWorker` thread** — Owns the camera session or WebSocket stream for the lifetime of
+  the app. Streams frames with a synchronous polling loop (`cam.get_frame()`) or an async WebSocket loop
   and emits `frame_ready(np.ndarray)` on each complete frame.
+
 
 > **Note on `PositionerWorker`:** `workers/positioner_worker.py` exists but
 > is **not currently used** — move dispatch was refactored into
@@ -134,9 +136,9 @@ to know about both workers and widgets simultaneously.
 | `positions_updated(dict)` | `FPSManager` | `AppModel.update_positions` |
 | `error(str)` | `FPSManager` | `MainWindow.on_fps_error` |
 | `connection_status(bool)` | `FPSManager` | `AppModel.set_fps_connected` |
-| `frame_ready(np.ndarray)` | `VimbaWorker` | `CameraWidget.update_frame` (QueuedConnection) |
-| `error(str)` | `VimbaWorker` | `MainWindow.on_vimba_error` |
-| `connection_status(bool)` | `VimbaWorker` | `AppModel.set_camera_connected` |
+| `frame_ready(np.ndarray)` | `VimbaWorker` / `StreamWorker` | `CameraWidget.update_frame` (QueuedConnection) |
+| `error(str)` | `VimbaWorker` / `StreamWorker` | `MainWindow.on_vimba_error` |
+| `connection_status(bool)` | `VimbaWorker` / `StreamWorker` | `AppModel.set_camera_connected` |
 | `model_updated()` | `AppModel` | `MainWindow._on_model_updated` → all widgets |
 | `connection_updated()` | `AppModel` | `MainWindow._on_connection_updated` → `StatusBar.update_connections` |
 | `move_requested(pid, α, β)` | `ControlPanel` | `MainWindow.on_move_requested` |
@@ -149,8 +151,9 @@ to know about both workers and widgets simultaneously.
 | `swap_requested()` | `Grid2d` / `CameraWidget` | `MainWindow.on_swap_views_requested` |
 | `reconnect_fps_requested()` | `StatusBar` | `MainWindow.reconnect_fps` |
 | `reconnect_camera_requested()` | `StatusBar` | `MainWindow.reconnect_camera` |
-| `exposure_changed(int)` | `CameraWidget` | `VimbaWorker.set_exposure` |
-| `gain_changed(float)` | `CameraWidget` | `VimbaWorker.set_gain` |
+| `exposure_changed(int)` | `CameraWidget` | `VimbaWorker.set_exposure` / `StreamWorker.set_exposure` |
+| `gain_changed(float)` | `CameraWidget` | `VimbaWorker.set_gain` / `StreamWorker.set_gain` |
+| `laser_status_received(dict)` | `StreamWorker` | (Future laser UI) |
 | `_move_batch_succeeded(list)` | `MainWindow` (asyncio thread) | `MainWindow._on_batch_move_success` |
 | `_move_batch_failed(list)` | `MainWindow` (asyncio thread) | `MainWindow._on_batch_move_failure` |
 
@@ -165,7 +168,8 @@ to know about both workers and widgets simultaneously.
 | `vmbpy` | Allied Vision camera SDK (Linux/macOS only — see below) |
 | `numpy` | Frame data handling |
 | `scikit-image` | `ProjectiveTransform` in `helpers/projection.py` |
-| `opencv-python` | `frame.as_opencv_image()` in `VimbaWorker` |
+| `opencv-python` | `frame.as_opencv_image()` in `VimbaWorker`, `cv2.imdecode` in `StreamWorker` |
+| `websockets` | WebSocket client for `StreamWorker` |
 
 
 ### jaeger-core
@@ -252,6 +256,16 @@ with VmbSystem.get_instance() as vmb:
 If `vmbpy` fails to import (e.g. Vimba X not installed), `VimbaWorker`
 emits `error(str)` and `connection_status(False)` and returns immediately.
 The UI continues to function without camera support.
+
+### StreamWorker (RPi5 Camera Bridge)
+
+When `FOBOS_CAMERA=stream` is set in the environment, the app uses `StreamWorker` instead of `VimbaWorker`. This connects via WebSockets to an RPi5 camera bridge running on `FOBOS_STREAM_HOST` (default `raspberrypi.local`) on port `FOBOS_STREAM_PORT` (default `8765`).
+
+It connects to two endpoints:
+- `/video`: Receives JPEG frames which are decoded to OpenCV images and emitted via `frame_ready`.
+- `/control`: A bidirectional channel for sending camera settings (exposure, gain) and laser control commands (`laser_on`, `laser_off`, `set_laser_intensity`, `request_status`), and receiving `laser_status_received`.
+
+Signal names and types are intentionally identical to `VimbaWorker` so they can be swapped without wiring changes.
 
 ---
 
