@@ -69,7 +69,6 @@ class FPSManager(QThread):
             
             await self._poll_loop()
         except Exception as e:
-            print(f"FPSManager main loop error: {e}")
             self.error.emit(str(e))
             self.connection_status.emit(False)
             # Shut down the partially-constructed FPS instance so its singleton
