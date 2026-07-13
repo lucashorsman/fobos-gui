@@ -12,6 +12,7 @@ def draw_positioner(painter, pid, pos_info, is_selected, draw_arms=True):
     painter.save()
     painter.translate(cx, cy)
     # The physical hardware's local kinematic X and Y axes are inverted relative to the global axes.
+    #  this is setup-dependent
     painter.scale(-1, -1)
 
     if is_selected:

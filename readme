@@ -1,0 +1,65 @@
+# FOBOS Positioner GUI
+
+A PySide6 control interface for operating robotic fibre positioners on the FOBOS instrument. Each positioner has two arms (α/β) reaching within an annulus; the UI drives them via manual angle entry or click-to-queue targeting on a live camera feed or 2D grid view.
+
+## Features
+
+- **Manual move** — enter α/β angles directly and go-to.
+- **Click-to-queue** — click positioners on the 2D grid or camera view, queue inverse-kinematics targets, swap between the two IK solutions, then send all queued moves in a single batch command.
+- **Live camera view** — Allied Vision (vmbpy) feed with a projected positioner overlay, calibrated against physical space. Alternatively can recieve video stream from RPi camera bridge.
+- **Mock mode** — run the full UI without hardware attached.
+- **Auto-reconnect** — detects dead CAN/camera connections and lets you reconnect from the status bar.
+
+## Requirements
+
+- Python (managed via [`uv`](https://docs.astral.sh/uv/))
+- Linux (deployment target) or macOS (development, with Vimba X SDK installed)
+- Hardware config at `~/.jaeger.yaml` (CAN@net IP/bus settings) — required only for real hardware (see [jaeger-core](https://github.com/kbwestfall/jaeger-core) for more info on jaeger configuration)
+- Allied Vision **Vimba X SDK** installed system-wide for camera support
+
+## Quick start
+
+```bash
+# install dependencies
+uv sync
+
+# run against real hardware (requires ~/.jaeger.yaml)
+uv run main.py
+
+# run without hardware (positioners + camera simulated)
+FOBOS_MOCK=1 uv run main.py
+```
+
+On first run, the camera view will prompt for calibration (see below) before click-to-move is available in that view.
+
+## Usage guide
+
+### 1. Calibrate the camera (one-time, or after moving the camera)
+Click **Calibrate** in the control panel, then click the four corners of the known physical reference rectangle in order: **top-left → top-right → bottom-left → bottom-right**. Calibration is saved to `calibration.json` and reloaded automatically on future launches.
+
+### 2. Queue moves
+- Click a positioner once to **select** it.
+- Click the selected positioner again to **queue** a move — a dashed blue arm shows the pending target.
+- Use **Swap Solution** to toggle between the two IK solutions for that target.
+- Repeat for as many positioners as needed.
+
+### 3. Send moves
+Click **Send N Targets** to dispatch all queued moves in a single batch command. Positioner state updates (moving → ready/error) appear live in the grid, camera overlay, and status bar.
+
+### 4. Manual single-positioner moves
+Enter α/β values directly in the control panel and click the go-to button — bypasses the queue entirely.
+
+### 5. Reconnecting
+If the CAN connection or camera drops, the status bar shows a disconnected state. Use **Reconnect FPS** / **Reconnect Camera** to rebuild the connection without restarting the app.
+
+## Project layout
+
+```
+fobos-gui/
+├── main.py              # entry point
+├── app_model.py         # single source of truth for state
+├── main_window.py       # wires signals/slots, owns move dispatch
+├── helpers/             # kinematics, projection, calibration I/O, drawing
+├── workers/             # FPSManager (CAN/asyncio), VimbaWorker (camera), mock hardware
+└── widgets/             # camera view, 2D grid, control panel, status bar
+```
