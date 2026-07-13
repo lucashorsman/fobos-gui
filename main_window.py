@@ -6,12 +6,24 @@ from app_model import AppModel
 from PySide6.QtCore import Qt, QEvent, Signal, Slot
 from workers.fps_manager import FPSManager
 from workers.vimba_worker import VimbaWorker
+from workers.stream_worker import StreamWorker
 from widgets.camera_widget import CameraWidget
 from widgets.status_bar import StatusBar
 from widgets.control_panel import ControlPanel
 from helpers.constants import PositionerState, normalize_for_positioner
 import asyncio
 import os
+
+# Camera backend selection:
+#   FOBOS_CAMERA=vimba   (default) — use VimbaWorker via vmbpy
+#   FOBOS_CAMERA=stream  — use StreamWorker via RPi5 WebSocket bridge
+#
+# When using the stream backend, also set:
+#   FOBOS_STREAM_HOST  (default: localhost)
+#   FOBOS_STREAM_PORT  (default: 8765)
+_CAMERA_BACKEND = os.environ.get("FOBOS_CAMERA", "vimba").lower()
+_STREAM_HOST = os.environ.get("FOBOS_STREAM_HOST", "localhost")
+_STREAM_PORT = int(os.environ.get("FOBOS_STREAM_PORT", "8765"))
 
 class MainWindow(QMainWindow):
     # Private signals used to dispatch move results back to the main thread
@@ -98,7 +110,7 @@ class MainWindow(QMainWindow):
         self._move_batch_failed.connect(self._on_batch_move_failure)
         
         self.poller = None
-        self.vimba_worker = None
+        self.camera_worker = None
         self._fps = None
         self._fps_loop = None
         
@@ -110,13 +122,9 @@ class MainWindow(QMainWindow):
         self.poller.connection_status.connect(self.model.set_fps_connected)
         self.poller.start()
 
-        self.vimba_worker = VimbaWorker(self)
-        self.vimba_worker.frame_ready.connect(self.camera_widget.update_frame, Qt.QueuedConnection)
-        self.vimba_worker.error.connect(self.on_vimba_error)
-        self.vimba_worker.connection_status.connect(self.model.set_camera_connected)
-        self.camera_widget.exposure_changed.connect(self.vimba_worker.set_exposure)
-        self.camera_widget.gain_changed.connect(self.vimba_worker.set_gain)
-        self.vimba_worker.start()
+        self.camera_worker = self._make_camera_worker()
+        self._connect_camera_worker()
+        self.camera_worker.start()
 
     def reconnect_fps(self):
         if self.poller:
@@ -135,18 +143,30 @@ class MainWindow(QMainWindow):
         self.poller.start()
 
     def reconnect_camera(self):
-        if self.vimba_worker:
-            self.vimba_worker.stop()
-            self.vimba_worker.deleteLater()
-            
+        if self.camera_worker:
+            self.camera_worker.stop()
+            self.camera_worker.deleteLater()
+
         self.model.set_camera_connected(False)
-        self.vimba_worker = VimbaWorker(self)
-        self.vimba_worker.frame_ready.connect(self.camera_widget.update_frame, Qt.QueuedConnection)
-        self.vimba_worker.error.connect(self.on_vimba_error)
-        self.vimba_worker.connection_status.connect(self.model.set_camera_connected)
-        self.camera_widget.exposure_changed.connect(self.vimba_worker.set_exposure)
-        self.camera_widget.gain_changed.connect(self.vimba_worker.set_gain)
-        self.vimba_worker.start()
+        self.camera_worker = self._make_camera_worker()
+        self._connect_camera_worker()
+        self.camera_worker.start()
+
+    def _make_camera_worker(self):
+        """Construct the camera worker selected by FOBOS_CAMERA."""
+        if _CAMERA_BACKEND == "stream":
+            print(f"Camera backend: StreamWorker ({_STREAM_HOST}:{_STREAM_PORT})")
+            return StreamWorker(host=_STREAM_HOST, port=_STREAM_PORT, parent=self)
+        print("Camera backend: VimbaWorker")
+        return VimbaWorker(self)
+
+    def _connect_camera_worker(self):
+        """Wire the camera worker signals/slots (identical for both backends)."""
+        self.camera_worker.frame_ready.connect(self.camera_widget.update_frame, Qt.QueuedConnection)
+        self.camera_worker.error.connect(self.on_vimba_error)
+        self.camera_worker.connection_status.connect(self.model.set_camera_connected)
+        self.camera_widget.exposure_changed.connect(self.camera_worker.set_exposure)
+        self.camera_widget.gain_changed.connect(self.camera_worker.set_gain)
 
     def _on_connection_updated(self):
         self.status_bar.update_connections(self.model.fps_connected, self.model.camera_connected)
@@ -307,8 +327,8 @@ class MainWindow(QMainWindow):
         return super().eventFilter(obj, event)
 
     def closeEvent(self, event):
-        if self.vimba_worker:
-            self.vimba_worker.stop()
+        if self.camera_worker:
+            self.camera_worker.stop()
         if self.poller:
             self.poller.stop()
         super().closeEvent(event)
