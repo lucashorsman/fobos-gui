@@ -206,47 +206,46 @@ class MainWindow(QMainWindow):
     def _is_any_moving(self) -> bool:
         return any(pos.get("state") == PositionerState.MOVING for pos in self.model.positioners.values())
 
+    def _dispatch(self, targets: dict) -> bool:
+        """Common guard, state-mutation, and asyncio submission for all move paths.
+
+        Marks the given positioners MOVING, then submits targets to the FPS loop.
+        Returns True if the coroutine was successfully submitted, False otherwise.
+        On submission failure, rolls back affected positioners to ERROR so the UI
+        reflects reality instead of leaving them stuck in the MOVING state.
+        """
+        if not self._fps or not self._fps_loop:
+            return False
+        if self._is_any_moving():
+            print("Move already in progress, ignoring request.")
+            return False
+        for pid in targets:
+            self.model.update_positioner_state(pid, PositionerState.MOVING)
+        try:
+            asyncio.run_coroutine_threadsafe(
+                self._do_batch_move(targets), self._fps_loop
+            )
+            return True
+        except RuntimeError as e:
+            print(f"Failed to submit move coroutine: {e}")
+            for pid in targets:
+                self.model.update_positioner_state(pid, PositionerState.ERROR)
+            return False
+
     def on_batch_move_requested(self):
         """Send all queued targets to hardware in a single CAN bus transaction."""
-        if not self._fps or not self._fps_loop:
-            return
-        
-        if self._is_any_moving():
-            print("Move already in progress, ignoring batch move request.")
-            return
-
         queued_moves = self.model.get_queued_moves()
         if not queued_moves:
             return
-
-        # Mark all queued positioners as moving before dispatching.
-        for pid in queued_moves:
-            self.model.update_positioner_state(pid, PositionerState.MOVING)
-        self.model.clear_queued_moves()
-
-        asyncio.run_coroutine_threadsafe(
-            self._do_batch_move(queued_moves), self._fps_loop
-        )
+        # Clear queue only after confirming the coroutine was submitted.
+        # If _dispatch fails, queued targets remain in the model so the
+        # operator can retry or inspect what was lost.
+        if self._dispatch(queued_moves):
+            self.model.clear_queued_moves()
 
     def on_move_requested(self, pid: int, alpha: float, beta: float):
-        """Single-positioner move from the manual entry panel.
-
-        Routes through the same batch coroutine as multi-positioner moves.
-        NOTE: Concurrent rapid-fire calls are not guarded by a lock. An
-        asyncio.Lock on _do_batch_move could prevent a second move from being
-        submitted while the first is in-flight, but this path is a backup tool
-        for manual correction — high-frequency use is not expected.
-        """
-        if not self._fps or not self._fps_loop:
-            return
-        
-        if self._is_any_moving():
-            print("Move already in progress, ignoring single move request.")
-            return
-        self.model.update_positioner_state(pid, PositionerState.MOVING)
-        asyncio.run_coroutine_threadsafe(
-            self._do_batch_move({pid: (alpha, beta)}), self._fps_loop
-        )
+        """Single-positioner move from the manual entry panel."""
+        self._dispatch({pid: (alpha, beta)})
 
     def on_xy_move_requested(self, pid: int, abs_x: float, abs_y: float):
         """Single-positioner move from the manual XY entry panel.
