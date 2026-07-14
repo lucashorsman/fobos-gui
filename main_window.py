@@ -10,7 +10,8 @@ from workers.stream_worker import StreamWorker
 from widgets.camera_widget import CameraWidget
 from widgets.status_bar import StatusBar
 from widgets.control_panel import ControlPanel
-from helpers.constants import PositionerState, normalize_for_positioner
+from helpers.constants import PositionerState, normalize_for_positioner, SHORT_ARM_LENGTH, LONG_ARM_LENGTH
+from helpers.annulus import solve_inverse_kinematics
 import asyncio
 import os
 
@@ -88,6 +89,7 @@ class MainWindow(QMainWindow):
         self.model.model_updated.connect(self._on_model_updated)
         self.model.connection_updated.connect(self._on_connection_updated)
         self.control_panel.move_requested.connect(self.on_move_requested)
+        self.control_panel.xy_move_requested.connect(self.on_xy_move_requested)
         self.grid2D.move_queued.connect(self.model.queue_move)
         self.camera_widget.move_queued.connect(self.model.queue_move)
         self.control_panel.batch_move_requested.connect(self.on_batch_move_requested)
@@ -169,7 +171,7 @@ class MainWindow(QMainWindow):
     def _connect_camera_worker(self):
         """Wire the camera worker signals/slots (identical for both backends).
 
-        Only worker→UI/model connections are made here. The UI→worker direction
+        Only worker to UI/model connections are made here. The UI to worker direction
         (exposure, gain) is routed through permanent MainWindow intermediary slots
         so there are no stale connections to clean up when the worker is replaced on reconnect.
         """
@@ -245,6 +247,24 @@ class MainWindow(QMainWindow):
         asyncio.run_coroutine_threadsafe(
             self._do_batch_move({pid: (alpha, beta)}), self._fps_loop
         )
+
+    def on_xy_move_requested(self, pid: int, abs_x: float, abs_y: float):
+        """Single-positioner move from the manual XY entry panel.
+
+        Converts absolute physical coordinates to a positioner-relative offset,
+        runs IK, then dispatches immediately via the same path as angle mode.
+        IK and center lookup live here (not in ControlPanel) because this is
+        the only layer that has access to both the model and the dispatch loop.
+        """
+        if pid not in self.model.positioners:
+            return
+        cx, cy = self.model.positioners[pid]["center"]
+        rel_x = abs_x - cx
+        rel_y = abs_y - cy
+        # Axis inversion matches the kinematic convention in Grid2d / CameraWidget.
+        solutions = solve_inverse_kinematics(-rel_x, -rel_y, SHORT_ARM_LENGTH, LONG_ARM_LENGTH)
+        if solutions:
+            self.on_move_requested(pid, solutions[0][0], solutions[0][1])
 
     async def _do_batch_move(self, targets: dict):
         """Execute a multi-positioner goto on the FPSManager asyncio loop.

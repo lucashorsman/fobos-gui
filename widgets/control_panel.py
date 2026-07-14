@@ -4,8 +4,10 @@ from PySide6.QtCore import Signal
 from PySide6.QtGui import QDoubleValidator
 
 class ControlPanel(QWidget):
-    # Emits positioner_id, alpha, beta
+    # Angle mode: emits positioner_id, alpha, beta
     move_requested = Signal(int, float, float)
+    # XY mode: emits positioner_id, abs_x, abs_y. IK + center handled by MainWindow
+    xy_move_requested = Signal(int, float, float)
     batch_move_requested = Signal()
     selection_changed = Signal(int)
     swap_solution_requested = Signal(int)
@@ -13,7 +15,7 @@ class ControlPanel(QWidget):
 
     def __init__(self):
         super().__init__()
-
+        self.AngleMode = False
         self.setup_ui()
 
     def setup_ui(self):
@@ -48,17 +50,23 @@ class ControlPanel(QWidget):
 
         # Alpha input
         alpha_layout = QHBoxLayout()
-        alpha_layout.addWidget(QLabel("Alpha (°):"))
+        if self.AngleMode:
+            alpha_layout.addWidget(QLabel("Alpha (°):"))
+        else:
+            alpha_layout.addWidget(QLabel("X (mm):"))
         self.alpha_input = QLineEdit()
-        self.alpha_input.setValidator(QDoubleValidator(-9.0, 369.0, 4, self))
+        # self.alpha_input.setValidator(QDoubleValidator(-9.0, 369.0, 4, self))
         alpha_layout.addWidget(self.alpha_input)
         manual_layout.addLayout(alpha_layout)
 
         # Beta input
         beta_layout = QHBoxLayout()
-        beta_layout.addWidget(QLabel("Beta (°):"))
+        if self.AngleMode:
+            beta_layout.addWidget(QLabel("Beta (°):"))
+        else:
+            beta_layout.addWidget(QLabel("Y (mm):"))
         self.beta_input = QLineEdit()
-        self.beta_input.setValidator(QDoubleValidator(-9.0, 369.0, 4, self))
+        # self.beta_input.setValidator(QDoubleValidator(-9.0, 369.0, 4, self))
         beta_layout.addWidget(self.beta_input)
         manual_layout.addLayout(beta_layout)
 
@@ -131,6 +139,7 @@ class ControlPanel(QWidget):
             self.pid_combo.blockSignals(False)
 
     def _on_go_clicked(self):
+
         if self.pid_combo.count() == 0:
             return
             
@@ -139,12 +148,18 @@ class ControlPanel(QWidget):
         beta_text = self.beta_input.text()
 
         try:
-            alpha = float(alpha_text) if alpha_text else 0.0
-            beta = float(beta_text) if beta_text else 0.0
-            self.move_requested.emit(pid, alpha, beta)
+            val1 = float(alpha_text) if alpha_text else 0.0
+            val2 = float(beta_text) if beta_text else 0.0
         except ValueError:
-            # Handle invalid input gracefully
-            pass
+            return
+
+        if not self.AngleMode:
+            # Emit absolute physical coords; MainWindow resolves the positioner
+            # center from AppModel, subtracts it, and runs IK — keeping this
+            # widget free of domain knowledge.
+            self.xy_move_requested.emit(pid, val1, val2)
+        else:
+            self.move_requested.emit(pid, val1, val2)
 
     def update_queue_state(self, positioners_dict):
         queued_count = 0
