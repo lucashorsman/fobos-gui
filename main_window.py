@@ -239,11 +239,12 @@ class MainWindow(QMainWindow):
             for pid in targets:
                 self.model.update_positioner_state(pid, PositionerState.ERROR)
             #if errored, reset angles
-            #this should only happen on hw failure. If it does occur, 
-            self.control_panel.update_angles(
-                0,
-                0,
-            )
+            #this should only happen on hw failure.
+            if self.model.selected_positioner_id in targets:
+                self.control_panel.update_angles(
+                    0,
+                    0,
+                )
             return False
 
     def on_batch_move_requested(self):
