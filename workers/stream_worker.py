@@ -101,9 +101,9 @@ class StreamWorker(QThread):
                             self.frame_ready.emit(frame)
             except Exception as exc:
                 if not self._shutdown and not _error_logged:
-                    # Demoted to debug so the warning doesn't double-print alongside
-                    # on_camera_error; error() is the single user-facing notification.
-                    logger.debug("Video connection lost/failed: %s", exc)
+                    # Only log and emit once per disconnection period to avoid
+                    # flooding the console while waiting for the bridge to come up.
+                    logger.warning("Video connection lost/failed: %s", exc)
                     self.connection_status.emit(False)
                     self.error.emit(str(exc))
                     _error_logged = True
@@ -129,9 +129,8 @@ class StreamWorker(QThread):
                             self.laser_status_received.emit(reply["status"])
             except Exception as exc:
                 if not self._shutdown and not _error_logged:
-                    # Control channel failure is secondary — the video loop already
-                    # notified the user. Log at debug level only; don't emit error().
-                    logger.debug("Control connection lost/failed: %s", exc)
+                    logger.warning("Control connection lost/failed: %s", exc)
+                    self.error.emit(str(exc))
                     _error_logged = True
             finally:
                 self._control_ws = None

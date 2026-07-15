@@ -248,7 +248,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "astropy", specifier = ">=7.1" },
-    { name = "jaeger-core", git = "https://github.com/albireox/jaeger-core.git" },
+    { name = "jaeger-core", git = "https://github.com/kbwestfall/jaeger-core.git" },
     { name = "matplotlib", specifier = ">=3.10" },
     { name = "numpy" },
     { name = "opencv-python" },
@@ -341,7 +341,7 @@ wheels = [
 [[package]]
 name = "jaeger-core"
 version = "1.0.0a0"
-source = { git = "https://github.com/albireox/jaeger-core.git#10768bcf05e3deb28ddbc751cd04bdc3633d439e" }
+source = { git = "https://github.com/kbwestfall/jaeger-core.git#10768bcf05e3deb28ddbc751cd04bdc3633d439e" }
 dependencies = [
     { name = "astropy" },
     { name = "click" },

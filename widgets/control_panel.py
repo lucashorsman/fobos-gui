@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
                                QLabel, QLineEdit, QPushButton, QComboBox)
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, QTimer
 from PySide6.QtGui import QDoubleValidator
 
 class ControlPanel(QWidget):
@@ -17,7 +17,7 @@ class ControlPanel(QWidget):
         super().__init__()
         self.AngleMode = False
         self.setup_ui()
-
+    
     def setup_ui(self):
         layout = QVBoxLayout(self)
         # layout.setContentsMargins(16, 16, 16, 16)
@@ -48,27 +48,40 @@ class ControlPanel(QWidget):
         manual_layout = QVBoxLayout(self.manual_container)
         manual_layout.setContentsMargins(10, 0, 0, 0)
 
-        # Alpha input
-        alpha_layout = QHBoxLayout()
-        if self.AngleMode:
-            alpha_layout.addWidget(QLabel("Alpha (°):"))
-        else:
-            alpha_layout.addWidget(QLabel("X (mm):"))
-        self.alpha_input = QLineEdit()
-        # self.alpha_input.setValidator(QDoubleValidator(-9.0, 369.0, 4, self))
-        alpha_layout.addWidget(self.alpha_input)
-        manual_layout.addLayout(alpha_layout)
 
-        # Beta input
+        # Alpha / X input row
+        main_inputs_layout = QHBoxLayout()
+        alpha_layout = QHBoxLayout()
+        alpha_layout.addWidget(QLabel("Alpha (°):"))
+        self.alpha_input = QLineEdit()
+        self.alpha_input.installEventFilter(self)
+        alpha_layout.addWidget(self.alpha_input)
+        main_inputs_layout.addLayout(alpha_layout)
+
+        x_layout = QHBoxLayout()
+        x_layout.addWidget(QLabel("X (mm):"))
+        self.x_input = QLineEdit()
+        self.x_input.installEventFilter(self)
+        x_layout.addWidget(self.x_input)
+        main_inputs_layout.addLayout(x_layout)
+
+        manual_layout.addLayout(main_inputs_layout)
+        # Beta / Y input row
+        second_inputs_layout = QHBoxLayout()
         beta_layout = QHBoxLayout()
-        if self.AngleMode:
-            beta_layout.addWidget(QLabel("Beta (°):"))
-        else:
-            beta_layout.addWidget(QLabel("Y (mm):"))
+        beta_layout.addWidget(QLabel("Beta (°):"))
         self.beta_input = QLineEdit()
-        # self.beta_input.setValidator(QDoubleValidator(-9.0, 369.0, 4, self))
+        self.beta_input.installEventFilter(self)
         beta_layout.addWidget(self.beta_input)
-        manual_layout.addLayout(beta_layout)
+        second_inputs_layout.addLayout(beta_layout)
+
+        y_layout = QHBoxLayout()
+        y_layout.addWidget(QLabel("Y (mm):"))
+        self.y_input = QLineEdit()
+        self.y_input.installEventFilter(self)
+        y_layout.addWidget(self.y_input)
+        second_inputs_layout.addLayout(y_layout)
+        manual_layout.addLayout(second_inputs_layout)
 
         # Go To button
         self.go_button = QPushButton("Go To")
@@ -99,7 +112,37 @@ class ControlPanel(QWidget):
         self.calibrate_button.clicked.connect(self.calibrate_requested.emit)
         layout.addWidget(self.calibrate_button)
         
+        # Explicit tab order: Alpha→Beta→X→Y→Go
+        self.setTabOrder(self.alpha_input, self.beta_input)
+        self.setTabOrder(self.beta_input, self.x_input)
+        self.setTabOrder(self.x_input, self.y_input)
+        self.setTabOrder(self.y_input, self.go_button)
+
         layout.addStretch()
+    def eventFilter(self, obj, event):
+        # Check if a text box was clicked into (gained focus)
+        if event.type() == event.Type.FocusIn:
+            if obj in [self.alpha_input, self.beta_input]:
+                self.AngleMode = True
+                self.set_exclusive_state(active=self.alpha_input, inactive=self.x_input)
+                self.set_exclusive_state(active=self.beta_input, inactive=self.y_input)
+            elif obj in [self.x_input, self.y_input]:
+                self.AngleMode = False
+                self.set_exclusive_state(active=self.x_input, inactive=self.alpha_input)
+                self.set_exclusive_state(active=self.y_input, inactive=self.beta_input)
+        return super().eventFilter(obj, event)
+    
+
+    def set_exclusive_state(self, active, inactive):
+        # Make active box editable and normal style
+        active.setReadOnly(False)
+        active.setStyleSheet("")
+        
+        # Freeze inactive box and make it look dimmed within the dark theme
+        inactive.setReadOnly(True)
+        inactive.setStyleSheet(
+            "background-color: #1a1a20; color: #686878; border: 1px solid #3a3a45;"
+        )
 
     def on_calibration_completed(self):
         self.calibrate_button.setText("Re-Calibrate")
@@ -146,10 +189,14 @@ class ControlPanel(QWidget):
         pid = self.pid_combo.currentData()
         alpha_text = self.alpha_input.text()
         beta_text = self.beta_input.text()
+        x_text = self.x_input.text()
+        y_text = self.y_input.text()
 
         try:
-            val1 = float(alpha_text) if alpha_text else 0.0
-            val2 = float(beta_text) if beta_text else 0.0
+            alpha = float(alpha_text) if alpha_text else 0.0
+            beta = float(beta_text) if beta_text else 0.0
+            x = float(x_text) if x_text else 0.0
+            y = float(y_text) if y_text else 0.0
         except ValueError:
             return
 
@@ -157,9 +204,10 @@ class ControlPanel(QWidget):
             # Emit absolute physical coords; MainWindow resolves the positioner
             # center from AppModel, subtracts it, and runs IK — keeping this
             # widget free of domain knowledge.
-            self.xy_move_requested.emit(pid, val1, val2)
+            self.xy_move_requested.emit(pid, x, y)
+            
         else:
-            self.move_requested.emit(pid, val1, val2)
+            self.move_requested.emit(pid, alpha, beta)
 
     def update_queue_state(self, positioners_dict):
         queued_count = 0
@@ -202,6 +250,33 @@ class ControlPanel(QWidget):
                 self.swap_solution_button.setEnabled(False)
         else:
             self.swap_solution_button.setEnabled(False)
+
+    def update_angles(self, alpha: float, beta: float):
+        """Populate the alpha/beta fields with the given angles.
+
+        Called by MainWindow after resolving an XY goto through IK, so the
+        operator can see which angles correspond to the requested position.
+        Values are formatted to 3 decimal places.
+        """
+        self.alpha_input.setText(f"{alpha:.3f}")
+        self.beta_input.setText(f"{beta:.3f}")
+
+    def flash_invalid_position(self, duration_ms: int = 800):
+        """Briefly change the Go button label to signal an unreachable position.
+
+        Called by MainWindow when IK returns no solutions for the requested
+        XY coordinate (i.e. outside the reachable annulus).
+        """
+        self.go_button.setText("Invalid Position")
+        self.go_button.setStyleSheet("background-color: #ef4444;")
+        self.go_button.setEnabled(False)
+        QTimer.singleShot(duration_ms, self._reset_go_button)
+
+    def _reset_go_button(self):
+        self.go_button.setText("Go To")
+        self.go_button.setStyleSheet("")
+        self.go_button.setEnabled(True)
+
 
     def _on_swap_solution_clicked(self):
         current_pid = self.pid_combo.currentData()

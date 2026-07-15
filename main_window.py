@@ -219,17 +219,31 @@ class MainWindow(QMainWindow):
         if self._is_any_moving():
             print("Move already in progress, ignoring request.")
             return False
+        
         for pid in targets:
             self.model.update_positioner_state(pid, PositionerState.MOVING)
         try:
             asyncio.run_coroutine_threadsafe(
                 self._do_batch_move(targets), self._fps_loop
             )
+            #if selected pid is in targets, update the angles
+            if self.model.selected_positioner_id in targets:
+                alpha, beta = targets[self.model.selected_positioner_id]
+                self.control_panel.update_angles(
+                    normalize_for_positioner(alpha),
+                    normalize_for_positioner(beta),
+                )
             return True
         except RuntimeError as e:
             print(f"Failed to submit move coroutine: {e}")
             for pid in targets:
                 self.model.update_positioner_state(pid, PositionerState.ERROR)
+            #if errored, reset angles
+            #this should only happen on hw failure. If it does occur, 
+            self.control_panel.update_angles(
+                0,
+                0,
+            )
             return False
 
     def on_batch_move_requested(self):
@@ -245,6 +259,10 @@ class MainWindow(QMainWindow):
 
     def on_move_requested(self, pid: int, alpha: float, beta: float):
         """Single-positioner move from the manual entry panel."""
+        self.control_panel.update_angles(
+            normalize_for_positioner(alpha),
+            normalize_for_positioner(beta),
+        )
         self._dispatch({pid: (alpha, beta)})
 
     def on_xy_move_requested(self, pid: int, abs_x: float, abs_y: float):
@@ -263,7 +281,14 @@ class MainWindow(QMainWindow):
         # Axis inversion matches the kinematic convention in Grid2d / CameraWidget.
         solutions = solve_inverse_kinematics(-rel_x, -rel_y, SHORT_ARM_LENGTH, LONG_ARM_LENGTH)
         if solutions:
-            self.on_move_requested(pid, solutions[0][0], solutions[0][1])
+            alpha, beta = solutions[0]
+            self.control_panel.update_angles(
+                normalize_for_positioner(alpha),
+                normalize_for_positioner(beta),
+            )
+            self.on_move_requested(pid, alpha, beta)
+        else:
+            self.control_panel.flash_invalid_position()
 
     async def _do_batch_move(self, targets: dict):
         """Execute a multi-positioner goto on the FPSManager asyncio loop.
