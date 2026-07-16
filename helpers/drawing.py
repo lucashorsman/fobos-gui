@@ -7,7 +7,7 @@ def draw_positioner(painter, pid, pos_info, is_selected, draw_arms=True):
     inner_radius = abs(SHORT_ARM_LENGTH - LONG_ARM_LENGTH)
     outer_radius = SHORT_ARM_LENGTH + LONG_ARM_LENGTH
 
-    cx, cy = pos_info.get('center', (0.0, 0.0))
+    cx, cy = pos_info.center
     
     painter.save()
     painter.translate(cx, cy)
@@ -37,8 +37,8 @@ def draw_positioner(painter, pid, pos_info, is_selected, draw_arms=True):
         painter.drawEllipse(QPointF(0, 0), outer_radius, outer_radius)
 
     if draw_arms:
-        alpha_deg = pos_info.get('alpha', 0.0)
-        beta_deg = pos_info.get('beta', 0.0)
+        alpha_deg = pos_info.alpha
+        beta_deg = pos_info.beta
         
         alpha_rad = math.radians(alpha_deg)
         beta_rad = math.radians(alpha_deg + beta_deg) 
@@ -57,7 +57,7 @@ def draw_positioner(painter, pid, pos_info, is_selected, draw_arms=True):
         painter.drawLine(QPointF(0, 0), QPointF(joint_x, joint_y))
         painter.drawLine(QPointF(joint_x, joint_y), QPointF(end_x, end_y))
 
-    queued_target = pos_info.get('queued_target')
+    queued_target = pos_info.queued_target
     if queued_target is not None:
         queued_alpha_deg, queued_beta_deg = queued_target
         queued_alpha_rad = math.radians(queued_alpha_deg)

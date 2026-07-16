@@ -7,11 +7,10 @@ import math
 from PySide6.QtCore import QPoint, QPointF, Qt, Slot, Signal, QRectF, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QImage, QPainter, QTransform, QPen, QPainterPath, QColor   
 from PySide6.QtWidgets import QLabel, QListWidget, QMessageBox, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QDialog, QFormLayout, QLineEdit, QSlider
-from helpers.constants import SHORT_ARM_LENGTH, LONG_ARM_LENGTH, GRID_SPACING
-from helpers.annulus import solve_inverse_kinematics
+from helpers.constants import GRID_SPACING
+from helpers.geometry import resolve_positioner_click
 from helpers.projection import PositionerProjection
 from helpers.drawing import draw_positioner, draw_coordinate_grid
-from helpers.geometry import get_clicked_positioner
 from helpers.calibration_io import save_calibration, load_calibration, is_valid_calibration_quad
 from widgets.pan_zoom_mixin import PanZoomMixin
 
@@ -302,34 +301,19 @@ class CameraWidget(QWidget, PanZoomMixin):
             return
         dest_x, dest_y = self.get_physical_click_coords(event)
 
-        # Convert destination physical space to grid space (we translate painter by 1275, 1087)
-        # grid_x = dest_x - 1275
-        # grid_y = dest_y - 1087
         grid_x, grid_y = dest_x, dest_y
 
-        positioners_dict = self._positioners_dict
-        closest_pid = get_clicked_positioner(grid_x, grid_y, positioners_dict, self._selected_pid)
+        action, pid, solutions = resolve_positioner_click(
+            grid_x, grid_y, self._positioners_dict, self._selected_pid
+        )
 
-        if closest_pid is None:
-            return
-
-        if closest_pid is not None and closest_pid != self._selected_pid:
-            self.selection_changed.emit(closest_pid)
-            return
-
-        cx, cy = self._positioners_dict[closest_pid].get("center", (0.0, 0.0))
-        rel_x = grid_x - cx
-        rel_y = grid_y - cy
-
-        self.target_offset = (rel_x, rel_y)
-
-        # Calculate IK
-        # The positioner's kinematic frame is rotated by 180 degrees (inverted X and Y)
-        solutions = solve_inverse_kinematics(-rel_x, -rel_y, SHORT_ARM_LENGTH, LONG_ARM_LENGTH)
-        if solutions:
-            # Emit raw IK solutions; normalization to [-10°, 370°] is applied
-            # once at the hardware dispatch boundary in MainWindow._do_batch_move.
-            self.move_queued.emit(closest_pid, solutions)
+        if action == "select":
+            self.selection_changed.emit(pid)
+        elif action == "queue":
+            # Store target offset for visual feedback (red dot)
+            cx, cy = self._positioners_dict[pid].center
+            self.target_offset = (grid_x - cx, grid_y - cy)
+            self.move_queued.emit(pid, solutions)
 
         self.update()
       
@@ -392,7 +376,7 @@ class CameraWidget(QWidget, PanZoomMixin):
 
                 if is_selected and self.target_offset is not None:
                     painter.save()
-                    cx, cy = p_info.get("center", (0.0, 0.0))
+                    cx, cy = p_info.center
                     painter.translate(cx, cy)
                     pen = QPen(Qt.red)
                     pen.setCosmetic(True)

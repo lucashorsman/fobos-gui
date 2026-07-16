@@ -1,6 +1,6 @@
 from widgets.pan_zoom_mixin import PanZoomMixin
 from helpers.drawing import draw_positioner, draw_coordinate_grid
-from helpers.geometry import get_clicked_positioner
+from helpers.geometry import resolve_positioner_click
 import math
 import sys
 
@@ -8,8 +8,7 @@ from PySide6.QtCore import QPointF, Qt, Signal, QRectF
 from PySide6.QtGui import QPainter, QPen, QColor, QPainterPath
 from PySide6.QtWidgets import QApplication, QPushButton, QWidget, QVBoxLayout
 
-from helpers.annulus import solve_inverse_kinematics
-from helpers.constants import GRID_SPACING, SHORT_ARM_LENGTH, LONG_ARM_LENGTH
+from helpers.constants import GRID_SPACING
 
 class Grid2d(QWidget, PanZoomMixin):
     move_requested = Signal(int, float, float)
@@ -53,29 +52,16 @@ class Grid2d(QWidget, PanZoomMixin):
 
         if event.button() == Qt.MouseButton.LeftButton:
             phys_x, phys_y = self.get_physical_click_coords(event)
-            
-            closest_pid = get_clicked_positioner(phys_x, phys_y, self.positioners_dict, self._selected_pid)
-            
-            if closest_pid is None:
-                return
 
-            #if pid swapped, then dont move arms
-            if closest_pid is not None and closest_pid != self._selected_pid:
-                print(f"Selected PID {closest_pid}")
-                self.selection_changed.emit(closest_pid)
-                return 
-            
-            cx, cy = self.positioners_dict[closest_pid].get('center', (0.0, 0.0))
-            rel_x = phys_x - cx
-            rel_y = phys_y - cy
-            
-            # Calculate IK
-            # The positioner's kinematic frame is rotated by 180 degrees (inverted X and Y)
-            solutions = solve_inverse_kinematics(-rel_x, -rel_y, SHORT_ARM_LENGTH, LONG_ARM_LENGTH)
-            if solutions:
-                # Emit raw IK solutions; normalization to [-10°, 370°] is applied
-                # once at the hardware dispatch boundary in MainWindow._do_batch_move.
-                self.move_queued.emit(closest_pid, solutions)
+            action, pid, solutions = resolve_positioner_click(
+                phys_x, phys_y, self.positioners_dict, self._selected_pid
+            )
+
+            if action == "select":
+                print(f"Selected PID {pid}")
+                self.selection_changed.emit(pid)
+            elif action == "queue":
+                self.move_queued.emit(pid, solutions)
 
     def mouseMoveEvent(self, event):
         if self.do_pan(event):

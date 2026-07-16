@@ -2,6 +2,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
                                QLabel, QLineEdit, QPushButton, QComboBox)
 from PySide6.QtCore import Signal, QTimer
 from PySide6.QtGui import QDoubleValidator
+from helpers.constants import PositionerState
 
 class ControlPanel(QWidget):
     # Angle mode: emits positioner_id, alpha, beta
@@ -91,6 +92,16 @@ class ControlPanel(QWidget):
 
         layout.addWidget(self.manual_container)
         self.manual_container.setVisible(False)
+
+        # Input validation
+        angle_validator = QDoubleValidator(-10.0, 370.0, 3)
+        self.alpha_input.setValidator(angle_validator)
+        self.beta_input.setValidator(angle_validator)
+
+        xy_validator = QDoubleValidator()
+        xy_validator.setDecimals(3)
+        self.x_input.setValidator(xy_validator)
+        self.y_input.setValidator(xy_validator)
 
         # Send Queued Targets button
         self.send_queue_button = QPushButton("No Queued Targets")
@@ -215,13 +226,12 @@ class ControlPanel(QWidget):
         has_error = False
 
         for pid, pos in positioners_dict.items():
-            state = pos.get("state", "ready")
-            if state == "moving":
+            if pos.state == PositionerState.MOVING:
                 has_moving = True
                 
-            if pos.get("queued_target") is not None:
+            if pos.queued_target is not None:
                 queued_count += 1
-                if state == "error":
+                if pos.state == PositionerState.ERROR:
                     has_error = True
 
         if has_moving:
@@ -244,7 +254,7 @@ class ControlPanel(QWidget):
         current_pid = self.pid_combo.currentData()
         if current_pid is not None and current_pid in positioners_dict:
             pos = positioners_dict[current_pid]
-            if len(pos.get("queued_solutions", [])) > 1:
+            if len(pos.queued_solutions) > 1:
                 self.swap_solution_button.setEnabled(True)
             else:
                 self.swap_solution_button.setEnabled(False)

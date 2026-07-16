@@ -65,15 +65,11 @@ class StatusBar(QWidget):
     def update_display(self, positioners_dict):
         lines = []
         for pid in sorted(positioners_dict.keys()):
-            state = positioners_dict[pid]
-            alpha = state.get("alpha", 0.0)
-            beta = state.get("beta", 0.0)
-            status = state.get("state", "unknown")
-            center = state.get("center", None)
+            pos = positioners_dict[pid]
             
             #| α: {alpha:>7.2f}° | β: {beta:>7.2f}° 
             line = f"PID {pid:03d} | "
-            line += f"State: {status.upper()} | Center: ({center[0]:.2f}, {center[1]:.2f})"
+            line += f"State: {pos.state.upper()} | Center: ({pos.center[0]:.2f}, {pos.center[1]:.2f})"
             
             lines.append(line)
             
