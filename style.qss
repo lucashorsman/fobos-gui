@@ -123,3 +123,16 @@ QLineEdit:focus, QComboBox:focus {
 QComboBox::drop-down {
     border: 0px;
 }
+
+/* Connection status indicators */
+QLabel#status_connected {
+    color: #10b981;
+    font-size: 12px;
+    letter-spacing: 1px;
+}
+
+QLabel#status_offline {
+    color: #ef4444;
+    font-size: 12px;
+    letter-spacing: 1px;
+}
