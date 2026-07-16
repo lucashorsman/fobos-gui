@@ -1,7 +1,7 @@
 #creates Qapplication and main window, starts the event loop, calls app.exec()
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QFont
-from main_window import MainWindow
+from core.main_window import MainWindow
 import sys
 
 def main():
