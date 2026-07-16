@@ -126,4 +126,5 @@ class FPSManager(QThread):
             else:
                 self._loop.call_soon_threadsafe(self._loop.stop)
                 
-        self.wait()
+        if self.isRunning():
+            self.wait()

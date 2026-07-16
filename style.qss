@@ -51,7 +51,7 @@ QPushButton:disabled {
 
 /* Primary Action Buttons (e.g. Go To, Send Targets) */
 QPushButton#go_button, QPushButton#send_queue_button {
-    background-color: #10b981; /* Blue */
+    background-color: #10b981; /* Emerald green */
     border: 1px solid #059669;
     color: white;
 }
@@ -87,7 +87,7 @@ QPushButton#calibrate_button:pressed {
 
 /* Secondary Actions (e.g. Swap Solution) */
 QPushButton#swap_solution_button {
-    background-color: #3b82f6; /* Green */
+    background-color: #3b82f6; /* Blue */
     border: 1px solid #2563eb;
     color: white;
 }

@@ -26,12 +26,16 @@ The UI gives an operator 2 ways to command a positioner:
 
 ```
 fobos-gui/                        # repo root
-├── main.py                       # Entry point. Creates QApplication, loads MainWindow.
-├── app_model.py                  # Central state store. Single source of truth.
-├── main_window.py                # Assembles widgets, wires all signals/slots, owns move dispatch.
+├── main.py                       # Entry point. Creates QApplication, loads core.MainWindow.
 ├── style.qss                     # QSS dark-theme stylesheet loaded at startup.
 ├── calibration.json              # Persisted camera↔physical calibration (auto-read/written).
+├── positioner_centers.json       # Persisted positioner centers mapping.
 ├── pyproject.toml                # uv-managed dependencies.
+├── core/
+│   ├── app_model.py              # Central state store. Single source of truth (uses PositionerData dataclass).
+│   ├── main_window.py            # Assembles widgets, wires all signals/slots, owns layout.
+│   ├── hardware_manager.py       # Manages FPS and camera worker lifecycles.
+│   └── move_dispatcher.py        # Owns move dispatch and async bridge.
 ├── helpers/
 │   ├── constants.py              # PositionerState enum, arm lengths, normalize_for_positioner().
 │   ├── annulus.py                # solve_inverse_kinematics(x, y, l1, l2) → two solutions.
@@ -88,13 +92,13 @@ There are three threads:
 
 > **Note on `PositionerWorker`:** `workers/positioner_worker.py` exists but
 > is **not currently used** — move dispatch was refactored into
-> `MainWindow._do_batch_move` (see Move Dispatch below). The file is kept in
+> `MoveDispatcher` (see Move Dispatch below). The file is kept in
 > place as a reference for the single-positioner async dispatch pattern;
 > do not wire it up or add new features to it.
 
 ### Move dispatch
 
-All positioner motion goes through `MainWindow._do_batch_move`, an `async`
+All positioner motion goes through `MoveDispatcher._do_batch_move`, an `async`
 coroutine that runs on the `FPSManager`'s asyncio loop:
 
 ```python
@@ -109,7 +113,7 @@ raw IK output. Results signal back to the main thread via private queued
 signals:
 
 ```python
-class MainWindow(QMainWindow):
+class MoveDispatcher(QObject):
     _move_batch_succeeded = Signal(list)  # [pid, ...] — runs on FPSManager thread; auto-queued
     _move_batch_failed    = Signal(list)  # [pid, ...] — same
 ```
@@ -119,43 +123,45 @@ PySide6 auto-promotes them to `QueuedConnection` when emitted from a non-main
 thread, ensuring `AppModel` is only mutated from the Qt event loop.
 
 The two entry points:
-- **Single manual move**: `MainWindow.on_move_requested(pid, alpha, beta)` —
+- **Single manual move**: `MoveDispatcher.on_move_requested(pid, alpha, beta)` —
   triggered by `ControlPanel.move_requested`.
-- **Batch queued move**: `MainWindow.on_batch_move_requested()` — reads
+- **Batch queued move**: `MoveDispatcher.on_batch_move_requested()` — reads
   `AppModel.get_queued_moves()` and dispatches them all in one `goto()` call,
   triggered by `ControlPanel.batch_move_requested`.
 
 ### Signal/slot map
 
-All connections are made in `main_window.py`. That is the only file that needs
-to know about both workers and widgets simultaneously.
+All connections are made in `core/main_window.py`. `MainWindow` acts as the central router between widgets, `HardwareManager`, `MoveDispatcher`, and `AppModel`.
 
 | Signal | Emitted by | Connected to |
 |---|---|---|
-| `ready(fps, loop)` | `FPSManager` | `MainWindow.on_fps_ready` |
+| `ready(fps, loop)` | `FPSManager` | `HardwareManager._on_fps_ready` |
+| `fps_ready(fps, loop)` | `HardwareManager` | `MoveDispatcher.set_fps` |
 | `positions_updated(dict)` | `FPSManager` | `AppModel.update_positions` |
-| `error(str)` | `FPSManager` | `MainWindow.on_fps_error` |
+| `error(str)` | `HardwareManager` | (Currently unused by UI, logged) |
 | `connection_status(bool)` | `FPSManager` | `AppModel.set_fps_connected` |
-| `frame_ready(np.ndarray)` | `VimbaWorker` / `StreamWorker` | `CameraWidget.update_frame` (QueuedConnection) |
-| `error(str)` | `VimbaWorker` / `StreamWorker` | `MainWindow.on_camera_error` |
+| `frame_ready(np.ndarray)` | `HardwareManager` | `CameraWidget.update_frame` (QueuedConnection) |
 | `connection_status(bool)` | `VimbaWorker` / `StreamWorker` | `AppModel.set_camera_connected` |
 | `model_updated()` | `AppModel` | `MainWindow._on_model_updated` → all widgets |
 | `connection_updated()` | `AppModel` | `MainWindow._on_connection_updated` → `StatusBar.update_connections` |
-| `move_requested(pid, α, β)` | `ControlPanel` | `MainWindow.on_move_requested` |
-| `batch_move_requested()` | `ControlPanel` | `MainWindow.on_batch_move_requested` |
+| `move_requested(pid, α, β)` | `ControlPanel` | `MoveDispatcher.on_move_requested` |
+| `batch_move_requested()` | `ControlPanel` | `MoveDispatcher.on_batch_move_requested` |
+| `xy_move_requested(pid, x, y)`| `ControlPanel`| `MoveDispatcher.on_xy_move_requested`|
 | `move_queued(pid, solutions)` | `Grid2d` / `CameraWidget` | `AppModel.queue_move` |
 | `selection_changed(pid)` | `ControlPanel` / `Grid2d` / `CameraWidget` | `AppModel.set_selected_positioner` |
 | `swap_solution_requested(pid)` | `ControlPanel` | `AppModel.swap_solution` |
 | `calibrate_requested()` | `ControlPanel` | `CameraWidget.start_calibration` |
 | `calibration_completed()` | `CameraWidget` | `ControlPanel.on_calibration_completed` |
 | `swap_requested()` | `Grid2d` / `CameraWidget` | `MainWindow.on_swap_views_requested` |
-| `reconnect_fps_requested()` | `StatusBar` | `MainWindow.reconnect_fps` |
-| `reconnect_camera_requested()` | `StatusBar` | `MainWindow.reconnect_camera` |
-| `exposure_changed(int)` | `CameraWidget` | `MainWindow._on_exposure_changed` → `camera_worker.set_exposure` |
-| `gain_changed(float)` | `CameraWidget` | `MainWindow._on_gain_changed` → `camera_worker.set_gain` |
+| `reconnect_fps_requested()` | `StatusBar` | `MainWindow._on_reconnect_fps` → `HardwareManager.reconnect_fps` |
+| `reconnect_camera_requested()` | `StatusBar` | `HardwareManager.reconnect_camera` |
+| `exposure_changed(int)` | `CameraWidget` | `HardwareManager.set_exposure` |
+| `gain_changed(float)` | `CameraWidget` | `HardwareManager.set_gain` |
 | `laser_status_received(dict)` | `StreamWorker` | (Future laser UI) |
-| `_move_batch_succeeded(list)` | `MainWindow` (asyncio thread) | `MainWindow._on_batch_move_success` |
-| `_move_batch_failed(list)` | `MainWindow` (asyncio thread) | `MainWindow._on_batch_move_failure` |
+| `_move_batch_succeeded(list)` | `MoveDispatcher` (asyncio thread) | `MoveDispatcher._on_batch_move_success` |
+| `_move_batch_failed(list)` | `MoveDispatcher` (asyncio thread) | `MoveDispatcher._on_batch_move_failure` |
+| `angles_updated(float, float)` | `MoveDispatcher` | `ControlPanel.update_angles` |
+| `invalid_position()` | `MoveDispatcher` | `ControlPanel.flash_invalid_position` |
 
 ---
 
@@ -186,9 +192,9 @@ submitted from the main thread use `asyncio.run_coroutine_threadsafe()` to
 safely cross the thread boundary and execute on the `FPSManager`'s event loop.
 
 The `FPS` object must be initialized **exactly once** and its internal tasks
-remain bound to the event loop that initialized it. `FPSManager` owns the
-`FPS` instance for the lifetime of the application. On reconnect,
-`MainWindow.reconnect_fps()` calls `poller.stop()` (which shuts down the FPS
+remain bound to the event loop that initialized it. `HardwareManager` owns the
+`FPSManager` instance for the lifetime of the application. On reconnect,
+`HardwareManager.reconnect_fps()` calls `poller.stop()` (which shuts down the FPS
 singleton via `fps.shutdown()`), then constructs a fresh `FPSManager`.
 
 Configuration lives in `~/.jaeger.yaml` (CAN@net IP and bus settings).
@@ -220,7 +226,7 @@ When this happens:
 - `FPSManager` measures how long `update_position()` takes. If it exceeds
   1.5 s on 3 consecutive cycles, `connection_status(False)` is emitted.
 - The operator uses the "Reconnect FPS" button in `StatusBar` to trigger
-  `MainWindow.reconnect_fps()`, which tears down and rebuilds the worker.
+  `HardwareManager.reconnect_fps()` (via `MainWindow`), which tears down and rebuilds the worker.
 
 #### Mock mode
 
@@ -273,10 +279,10 @@ Signal names and types are intentionally identical to `VimbaWorker` so they can 
 
 `AppModel` (inherits `QObject`) holds:
 
-- `positioners: dict` — keyed by positioner ID. Each entry:
+- `positioners: dict` — keyed by positioner ID. Each entry is a `PositionerData` dataclass with attributes:
   - `alpha: float` — current α position in degrees
   - `beta: float` — current β position in degrees
-  - `state: str` — one of the `PositionerState` values below
+  - `state: PositionerState` — one of the `PositionerState` enum values below
   - `center: tuple` — physical (x, y) location in positioner coordinate space (mm)
   - `queued_target: tuple | None` — `(alpha, beta)` of the currently queued IK target
   - `queued_solutions: list` — both IK solutions returned by `solve_inverse_kinematics`
@@ -372,7 +378,7 @@ painter.scale(-1, -1)  # flip painter into positioner's kinematic frame
 ## Asyncio / QThread bridge
 
 This is the trickiest part of the architecture. The pattern used by
-`MainWindow` for move dispatch:
+`MoveDispatcher` for move dispatch:
 
 ```python
 # Called from main thread (button click / slot)
@@ -436,15 +442,13 @@ position.
 
 ## Shutdown
 
-`MainWindow.closeEvent` calls `worker.stop()` on all workers before the
+`MainWindow.closeEvent` calls `stop_camera()` and `stop_fps()` on `HardwareManager` before the
 event loop exits:
 
 ```python
 def closeEvent(self, event):
-    if self.vimba_worker:
-        self.vimba_worker.stop()
-    if self.poller:
-        self.poller.stop()
+    self.hardware.stop_camera()
+    self.hardware.stop_fps()
     super().closeEvent(event)
 ```
 
@@ -469,10 +473,9 @@ calls `self.wait()` to block until the thread exits cleanly.
   vendored `vmbpy-1.0.4-py3-none-any.whl` and Vimba X SDK installed
 - Hardware config (`~/.jaeger.yaml`) must exist before running against real
   hardware
-- Positioner centers for PIDs 1403 and 967 are **hardcoded** in
-  `MainWindow.on_fps_ready`. The centers are determined by your setup. 
-  so the hardcoded values are the correct permanent approach. Any new
-  positioner must have its physical center added here manually.
+- Positioner centers for PIDs 1403 and 967 are stored in `positioner_centers.json`. 
+  The centers are determined by your setup, so the JSON values are the correct permanent approach. 
+  Any new positioner must have its physical center added to this JSON file.
   [TODO] Make document explaining camera calibration and positioner setup. 
 
 ---

@@ -15,9 +15,8 @@ class PositionerProjection:
         """
         src = np.array(physical_pts)
         dst = np.array(camera_pts)
-        self._tform = ProjectiveTransform()
-        if not self._tform.estimate(src, dst):
-            self._tform = None
+        self._tform = ProjectiveTransform.from_estimate(src, dst)
+        if self._tform is None:
             raise RuntimeError("Failed to estimate transformation.")
 
     def reset(self):

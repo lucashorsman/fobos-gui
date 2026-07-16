@@ -22,6 +22,7 @@ class VimbaWorker(QThread):
 	def __init__(self, parent=None):
 		super().__init__(parent)
 		self._running = False
+		self._shutdown = False
 
 	@Slot(int)
 	def set_exposure(self, exposure_us: int):
@@ -67,9 +68,11 @@ class VimbaWorker(QThread):
 			self.connection_status.emit(False)
 		finally:
 			self._running = False
-			self.connection_status.emit(False)
+			if not self._shutdown:
+				self.connection_status.emit(False)
 
 	def stop(self):
+		self._shutdown = True
 		self._running = False
 		self.requestInterruption()
 		self.wait()
