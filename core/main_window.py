@@ -14,6 +14,7 @@ from core.move_dispatcher import MoveDispatcher
 from widgets.camera_widget import CameraWidget
 from widgets.status_bar import StatusBar
 from widgets.control_panel import ControlPanel
+from helpers.constants import PositionerState
 import os
 
 
@@ -60,6 +61,10 @@ class MainWindow(QMainWindow):
         self.current_small_view = self.camera_widget
         self.current_main_view.swap_button.setVisible(False)
         self.current_small_view.swap_button.setVisible(True)
+
+        # Used to detect PID-switch and settle events in _on_model_updated
+        self._prev_selected_pid: int | None = None
+        self._prev_selected_state: str | None = None
 
         self.mouse_coord_label = QLabel("X: --, Y: --")
         self.mouse_coord_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -142,6 +147,31 @@ class MainWindow(QMainWindow):
         self.camera_widget.update_display(self.model.positioners, self.model.selected_positioner_id)
         self.control_panel.update_selected_positioner(self.model.selected_positioner_id)
         self.control_panel.update_queue_state(self.model.positioners)
+        self._maybe_fill_control_panel_inputs()
+
+    def _maybe_fill_control_panel_inputs(self):
+        """Fill control panel inputs only on PID-switch or positioner settle.
+
+        Avoids clobbering user input during a move or on every 5 Hz poll tick.
+        Triggers when:
+        - The selected positioner ID changes (operator switched PIDs).
+        - The selected positioner transitions from MOVING → READY (move settled).
+        """
+        pid = self.model.selected_positioner_id
+        pos = self.model.positioners.get(pid)
+        current_state = pos.state if pos else None
+
+        pid_changed = pid != self._prev_selected_pid
+        settled = (
+            self._prev_selected_state == PositionerState.MOVING
+            and current_state == PositionerState.READY
+        )
+
+        if pid_changed or settled:
+            self.control_panel.update_current_positioner_data(pos)
+
+        self._prev_selected_pid = pid
+        self._prev_selected_state = current_state
 
     # -- View swapping -------------------------------------------------------
 

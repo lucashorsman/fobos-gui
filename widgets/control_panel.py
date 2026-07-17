@@ -2,7 +2,8 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout,
                                QLabel, QLineEdit, QPushButton, QComboBox)
 from PySide6.QtCore import Signal, QTimer
 from PySide6.QtGui import QDoubleValidator
-from helpers.constants import PositionerState
+from helpers.constants import PositionerState, SHORT_ARM_LENGTH, LONG_ARM_LENGTH
+from helpers.annulus import solve_forward_kinematics
 
 class ControlPanel(QWidget):
     # Angle mode: emits positioner_id, alpha, beta
@@ -37,18 +38,7 @@ class ControlPanel(QWidget):
         
         layout.addLayout(top_layout)
 
-        # Manual Entry Toggle
-        self.manual_toggle_btn = QPushButton("▶ Manual Entry")
-        self.manual_toggle_btn.setCheckable(True)
-        self.manual_toggle_btn.setStyleSheet("text-align: left; padding: 4px; font-weight: bold;")
-        self.manual_toggle_btn.toggled.connect(self._on_manual_toggle_toggled)
-        layout.addWidget(self.manual_toggle_btn)
-
-        # Manual Entry Container
-        self.manual_container = QWidget()
-        manual_layout = QVBoxLayout(self.manual_container)
-        manual_layout.setContentsMargins(10, 0, 0, 0)
-
+        layout.addWidget(QLabel("Manual Entry"))
 
         # Alpha / X input row
         main_inputs_layout = QHBoxLayout()
@@ -66,7 +56,8 @@ class ControlPanel(QWidget):
         x_layout.addWidget(self.x_input)
         main_inputs_layout.addLayout(x_layout)
 
-        manual_layout.addLayout(main_inputs_layout)
+        layout.addLayout(main_inputs_layout)
+
         # Beta / Y input row
         second_inputs_layout = QHBoxLayout()
         beta_layout = QHBoxLayout()
@@ -82,16 +73,13 @@ class ControlPanel(QWidget):
         self.y_input.installEventFilter(self)
         y_layout.addWidget(self.y_input)
         second_inputs_layout.addLayout(y_layout)
-        manual_layout.addLayout(second_inputs_layout)
+        layout.addLayout(second_inputs_layout)
 
         # Go To button
         self.go_button = QPushButton("Go To")
         self.go_button.setObjectName("go_button")
         self.go_button.clicked.connect(self._on_go_clicked)
-        manual_layout.addWidget(self.go_button)
-
-        layout.addWidget(self.manual_container)
-        self.manual_container.setVisible(False)
+        layout.addWidget(self.go_button)
 
         # Input validation
         angle_validator = QDoubleValidator(-10.0, 370.0, 3)
@@ -160,10 +148,6 @@ class ControlPanel(QWidget):
         self.calibrate_button.setObjectName("recalibrate_button")
         self.calibrate_button.style().unpolish(self.calibrate_button)
         self.calibrate_button.style().polish(self.calibrate_button)
-
-    def _on_manual_toggle_toggled(self, checked):
-        self.manual_container.setVisible(checked)
-        self.manual_toggle_btn.setText("▼ Manual Entry" if checked else "▶ Manual Entry")
 
     def update_positioners(self, pids):
         current_pid = self.pid_combo.currentText()
@@ -270,6 +254,32 @@ class ControlPanel(QWidget):
         """
         self.alpha_input.setText(f"{alpha:.3f}")
         self.beta_input.setText(f"{beta:.3f}")
+
+    def update_current_positioner_data(self, pos):
+        """Fill all input fields with the settled state of the selected positioner.
+
+        Called only when the selected PID changes or a move completes
+        (MOVING → READY), so it is always safe to overwrite the fields.
+        Uses forward kinematics to derive the XY display from alpha/beta.
+
+        Args:
+            pos: PositionerData for the currently selected positioner, or None.
+        """
+        if pos is None:
+            return
+
+        self.alpha_input.setText(f"{pos.alpha:.3f}")
+        self.beta_input.setText(f"{pos.beta:.3f}")
+
+        try:
+            cx, cy = pos.center
+            x, y = solve_forward_kinematics(
+                pos.alpha, pos.beta, cx, cy, SHORT_ARM_LENGTH, LONG_ARM_LENGTH
+            )
+            self.x_input.setText(f"{x:.3f}")
+            self.y_input.setText(f"{y:.3f}")
+        except Exception:
+            pass
 
     def flash_invalid_position(self, duration_ms: int = 800):
         """Briefly change the Go button label to signal an unreachable position.

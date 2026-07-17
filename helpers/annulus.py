@@ -1,3 +1,5 @@
+from helpers.constants import LONG_ARM_LENGTH
+from helpers.constants import SHORT_ARM_LENGTH
 import math
 #given a target point (x, y) and the lengths of two links (l1, l2), calculate the two possible joint angle solutions (theta1, theta2) to reach that point. The function should return the angles in degrees and handle cases where the point is unreachable due to being outside the annulus defined by the link lengths.
 def solve_inverse_kinematics(x, y, l1, l2):
@@ -55,7 +57,36 @@ def solve_inverse_kinematics(x, y, l1, l2):
         
     return solutions
 
+def solve_forward_kinematics(alpha: float, beta: float,xc: float, yc: float, l1: float, l2: float) -> tuple[float, float]:
+    """Compute the global XY tip position of a positioner from its current angles.
+
+    Args:
+        alpha: angle of the first link relative to the x-axis in degrees
+        beta: angle of the second link relative to the first link in degrees
+        xc: x coordinate of the center of the positioner
+        yc: y coordinate of the center of the positioner
+        l1: length of the first link
+        l2: length of the second link
+
+    Returns:
+        tuple: (x, y) coordinates of the tip in the same coordinate space as xc, yc
+    """
+    alpha_rad = math.radians(alpha)
+    beta_rad = math.radians(alpha + beta)
+
+    # Local tip offset in the positioner's own frame
+    local_x = l1 * math.cos(alpha_rad) + l2 * math.cos(beta_rad)
+    local_y = l1 * math.sin(alpha_rad) + l2 * math.sin(beta_rad)
+
+    # Invert into global frame (kinematic frame is rotated 180 °)
+    global_x = xc - local_x
+    global_y = yc - local_y
+
+    return global_x, global_y
+
+
 # --- Example Usage ---
+
 if __name__ == "__main__":
     # Define link lengths (e.g., Inner boundary = 2, Outer boundary = 8)
     link1_length = 5.0

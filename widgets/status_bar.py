@@ -1,5 +1,7 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QPushButton
 from PySide6.QtCore import Signal
+from helpers.annulus import solve_forward_kinematics
+from helpers.constants import SHORT_ARM_LENGTH, LONG_ARM_LENGTH
 
 class StatusBar(QWidget):
     reconnect_fps_requested = Signal()
@@ -67,9 +69,11 @@ class StatusBar(QWidget):
         for pid in sorted(positioners_dict.keys()):
             pos = positioners_dict[pid]
             
+            x, y = solve_forward_kinematics(pos.alpha, pos.beta, pos.center[0], pos.center[1], SHORT_ARM_LENGTH, LONG_ARM_LENGTH)
+            
             #| α: {alpha:>7.2f}° | β: {beta:>7.2f}° 
             line = f"PID {pid:03d} | "
-            line += f"State: {pos.state.upper()} | Center: ({pos.center[0]:.2f}, {pos.center[1]:.2f})"
+            line += f"State: {pos.state.upper()} | Location (px): ({x:.2f}, {y:.2f})"
             
             lines.append(line)
             
