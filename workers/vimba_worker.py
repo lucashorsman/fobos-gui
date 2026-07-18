@@ -23,16 +23,31 @@ class VimbaWorker(QThread):
 		super().__init__(parent)
 		self._running = False
 		self._shutdown = False
+		self._cam = None  # set while camera context is open
 
 	@Slot(int)
 	def set_exposure(self, exposure_us: int):
-		print(f"VimbaWorker stub: setting exposure to {exposure_us} µs")
-		# TODO: implement actual vmbpy camera exposure setting here
+		if self._cam is None:
+			return
+		try:
+			self._cam.ExposureTime.set(float(exposure_us))
+		except Exception:
+			try:
+				self._cam.ExposureTimeAbs.set(float(exposure_us))
+			except Exception as e:
+				print(f"VimbaWorker: failed to set exposure: {e}")
 
 	@Slot(float)
 	def set_gain(self, gain_db: float):
-		print(f"VimbaWorker stub: setting gain to {gain_db} dB")
-		# TODO: implement actual vmbpy camera gain setting here
+		if self._cam is None:
+			return
+		try:
+			self._cam.Gain.set(gain_db)
+		except Exception:
+			try:
+				self._cam.GainRaw.set(gain_db)
+			except Exception as e:
+				print(f"VimbaWorker: failed to set gain: {e}")
 
 	def run(self):
 		if _VMBPY_IMPORT_ERROR is not None:
@@ -57,6 +72,14 @@ class VimbaWorker(QThread):
 					except Exception:
 						cam.set_pixel_format(PixelFormat.Mono8)
 
+					# Disable auto modes so slider values take effect immediately.
+					for feat_name in ("ExposureAuto", "GainAuto"):
+						try:
+							getattr(cam, feat_name).set("Off")
+						except Exception:
+							pass
+
+					self._cam = cam
 					self.connection_status.emit(True)
 					while self._running and not self.isInterruptionRequested():
 						frame = cam.get_frame()
@@ -67,6 +90,7 @@ class VimbaWorker(QThread):
 			self.error.emit(str(exc))
 			self.connection_status.emit(False)
 		finally:
+			self._cam = None
 			self._running = False
 			if not self._shutdown:
 				self.connection_status.emit(False)

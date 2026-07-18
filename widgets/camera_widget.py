@@ -31,6 +31,9 @@ class CameraSettingsPanel(QWidget):
     exposure_changed = Signal(int)
     gain_changed = Signal(float)
     
+    # Milliseconds to wait after the slider stops before firing the signal.
+    _DEBOUNCE_MS = 400
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Camera Settings")
@@ -38,34 +41,53 @@ class CameraSettingsPanel(QWidget):
         self.setAutoFillBackground(True)
         # Darker background for visibility over the camera
         self.setStyleSheet("CameraSettingsPanel { background-color: #2b2b2b; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; border: 1px solid #555; border-top: none; }")
-        
+
         self.exposure_label = QLabel("10000 \u00B5s")
         self.exposure_slider = QSlider(Qt.Horizontal)
         self.exposure_slider.setRange(100, 100000)
         self.exposure_slider.setValue(10000)
-        
+
         self.gain_label = QLabel("0.0 dB")
         self.gain_slider = QSlider(Qt.Horizontal)
-        self.gain_slider.setRange(0, 400) # 0 to 40.0 dB
+        self.gain_slider.setRange(0, 400)  # 0 to 40.0 dB
         self.gain_slider.setValue(0)
-        
+
         layout = self.layout()
         layout.addRow("Exposure:", self.exposure_slider)
         layout.addRow("", self.exposure_label)
         layout.addRow("Gain:", self.gain_slider)
         layout.addRow("", self.gain_label)
-        
+
+        # Debounce timers — restart on every slider tick, fire only when settled.
+        self._exposure_timer = QTimer(self)
+        self._exposure_timer.setSingleShot(True)
+        self._exposure_timer.setInterval(self._DEBOUNCE_MS)
+        self._exposure_timer.timeout.connect(self._emit_exposure)
+
+        self._gain_timer = QTimer(self)
+        self._gain_timer.setSingleShot(True)
+        self._gain_timer.setInterval(self._DEBOUNCE_MS)
+        self._gain_timer.timeout.connect(self._emit_gain)
+
         self.exposure_slider.valueChanged.connect(self.on_exposure_changed)
         self.gain_slider.valueChanged.connect(self.on_gain_changed)
-        
+
     def on_exposure_changed(self, val):
+        # Update the label immediately for snappy visual feedback.
         self.exposure_label.setText(f"{val} \u00B5s")
-        self.exposure_changed.emit(val)
+        # Restart the debounce timer; the signal fires only after the slider settles.
+        self._exposure_timer.start()
+
+    def _emit_exposure(self):
+        self.exposure_changed.emit(self.exposure_slider.value())
 
     def on_gain_changed(self, val):
         gain_db = val / 10.0
         self.gain_label.setText(f"{gain_db:.1f} dB")
-        self.gain_changed.emit(gain_db)
+        self._gain_timer.start()
+
+    def _emit_gain(self):
+        self.gain_changed.emit(self.gain_slider.value() / 10.0)
 
 class CameraWidget(QWidget, PanZoomMixin):
     move_requested = Signal(int, float, float)
