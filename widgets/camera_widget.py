@@ -1,6 +1,10 @@
 """Widget for displaying live Vimba camera frames."""
 
 from __future__ import annotations
+import datetime
+import os
+
+import cv2
 from PySide6.QtCore import QTimer
 
 import math
@@ -30,13 +34,14 @@ class UnclosableDialog(QDialog):
 class CameraSettingsPanel(QWidget):
     exposure_changed = Signal(int)
     gain_changed = Signal(float)
+    save_image_requested = Signal()
     
     # Milliseconds to wait after the slider stops before firing the signal.
     _DEBOUNCE_MS = 400
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Camera Settings")
+        self.setWindowTitle("Camera Functions")
         self.setLayout(QFormLayout())
         self.setAutoFillBackground(True)
         # Darker background for visibility over the camera
@@ -57,6 +62,12 @@ class CameraSettingsPanel(QWidget):
         layout.addRow("", self.exposure_label)
         layout.addRow("Gain:", self.gain_slider)
         layout.addRow("", self.gain_label)
+
+        # Save Image button
+        self.save_image_button = QPushButton("Save Image")
+        self.save_image_button.setObjectName("save_image_button")
+        self.save_image_button.clicked.connect(self.save_image_requested.emit)
+        layout.addRow(self.save_image_button)
 
         # Debounce timers — restart on every slider tick, fire only when settled.
         self._exposure_timer = QTimer(self)
@@ -146,7 +157,7 @@ class CameraWidget(QWidget, PanZoomMixin):
         self.swap_button.clicked.connect(self.swap_requested.emit)
         top_layout.addWidget(self.swap_button, alignment=Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         
-        self.settings_button = QPushButton("Camera Settings")
+        self.settings_button = QPushButton("Camera Functions")
         self.settings_button.clicked.connect(self.toggle_settings_panel)
         top_layout.addWidget(self.settings_button, alignment=Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
         
@@ -156,6 +167,7 @@ class CameraWidget(QWidget, PanZoomMixin):
         self.settings_panel = CameraSettingsPanel(self)
         self.settings_panel.exposure_changed.connect(self.exposure_changed.emit)
         self.settings_panel.gain_changed.connect(self.gain_changed.emit)
+        self.settings_panel.save_image_requested.connect(self.save_current_frame)
         
         self._panel_visible = False
         self.panel_animation = QPropertyAnimation(self.settings_panel, b"pos")
@@ -176,12 +188,12 @@ class CameraWidget(QWidget, PanZoomMixin):
             # Slide up
             self.panel_animation.setEndValue(QPoint(panel_x, -self.settings_panel.height()))
             self._panel_visible = False
-            self.settings_button.setText("Camera Settings")
+            self.settings_button.setText("Camera Functions")
         else:
             # Slide down
             self.panel_animation.setEndValue(QPoint(panel_x, 0))
             self._panel_visible = True
-            self.settings_button.setText("Hide Settings")
+            self.settings_button.setText("Hide Functions")
             
         self.panel_animation.start()
 
@@ -216,7 +228,42 @@ class CameraWidget(QWidget, PanZoomMixin):
             self.first_frame = False
         else:
             self.update()
-        
+
+    @Slot()
+    def save_current_frame(self):
+        """Save the latest camera frame to a timestamped PNG file.
+
+        Works with both StreamWorker and VimbaWorker since both store frames
+        in self._frame via update_frame().  Falls back to saving the QImage
+        if no numpy array is available (e.g. placeholder frame before camera
+        connects).
+        """
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+        save_dir = os.path.join(os.path.expanduser("~"), "Pictures", "fobos_captures")
+        os.makedirs(save_dir, exist_ok=True)
+        filename = os.path.join(save_dir, f"frame_{timestamp}.png")
+
+        saved = False
+        if self._frame is not None:
+            try:
+                cv2.imwrite(filename, self._frame)
+                saved = True
+            except Exception as exc:
+                print(f"CameraWidget: cv2.imwrite failed: {exc}")
+
+        if not saved and self._image is not None:
+            try:
+                self._image.save(filename)
+                saved = True
+            except Exception as exc:
+                print(f"CameraWidget: QImage.save failed: {exc}")
+
+        if saved:
+            print(f"CameraWidget: frame saved to {filename}")
+        else:
+            print("CameraWidget: no frame available to save")
+
+
     def start_calibration(self):
         self.camera_pts = []
         self.projection.reset()
