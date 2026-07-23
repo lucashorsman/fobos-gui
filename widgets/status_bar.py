@@ -73,7 +73,7 @@ class StatusBar(QWidget):
             
             #| α: {alpha:>7.2f}° | β: {beta:>7.2f}° 
             line = f"PID {pid:03d} | "
-            line += f"State: {pos.state.upper()} | Location (px): ({x:.2f}, {y:.2f})"
+            line += f"State: {pos.state.upper()} | Location (mm): ({x:.2f}, {y:.2f})"
             
             lines.append(line)
             
