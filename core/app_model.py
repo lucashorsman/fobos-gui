@@ -33,6 +33,7 @@ class AppModel(QObject):
 
     model_updated = Signal()
     connection_updated = Signal()
+    verify_results_updated = Signal()
 
     def __init__(self):
         super().__init__()
@@ -40,6 +41,9 @@ class AppModel(QObject):
         self.selected_positioner_id: int | None = None
         self.fps_connected: bool = False
         self.camera_connected: bool = False
+        self.verify_in_progress: bool = False
+        self.last_verify_results: dict = {}   # {pid: result_dict}
+        self.last_verify_unmatched: list = []  # unmatched blobs
 
     def set_fps_connected(self, connected: bool):
         if self.fps_connected != connected:
@@ -115,3 +119,13 @@ class AppModel(QObject):
             for pid, p in self.positioners.items()
             if p.queued_target is not None
         }
+        #allows us to manage the state of the verify procedure
+    def set_verify_in_progress(self, val: bool): 
+        if self.verify_in_progress != val:
+            self.verify_in_progress = val
+            self.model_updated.emit()
+
+    def set_verify_results(self, results: dict, unmatched: list | None = None):
+        self.last_verify_results = results
+        self.last_verify_unmatched = unmatched or []
+        self.verify_results_updated.emit()

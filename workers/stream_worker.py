@@ -31,8 +31,8 @@ class StreamWorker(QThread):
     error = Signal(str)
     connection_status = Signal(bool)
 
-    # Extra signal specific to the RPi bridge control channel.
-    laser_status_received = Signal(dict)
+    # Extra signal specific to the /control status response is received
+    laser_status_received = Signal(object)
 
     def __init__(
         self,

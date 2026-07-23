@@ -11,7 +11,7 @@ import asyncio
 from PySide6.QtCore import QObject, Signal, Slot
 
 from core.app_model import AppModel
-from helpers.constants import PositionerState, normalize_for_positioner, SHORT_ARM_LENGTH, LONG_ARM_LENGTH
+from helpers.constants import PositionerState, normalize_for_positioner, SHORT_ARM_LENGTH_MM, LONG_ARM_LENGTH_MM
 from helpers.annulus import solve_inverse_kinematics
 
 
@@ -27,8 +27,8 @@ class MoveDispatcher(QObject):
     # Cross-thread signals (emitted from the FPSManager asyncio loop thread).
     # PySide6 auto-promotes to QueuedConnection when emitted from a non-main
     # thread, ensuring AppModel is only mutated from the Qt event loop.
-    _move_batch_succeeded = Signal(list)
-    _move_batch_failed = Signal(list)
+    _move_batch_succeeded = Signal(object)
+    _move_batch_failed = Signal(object)
 
     # UI feedback signals — MainWindow routes these to ControlPanel
     angles_updated = Signal(float, float)       # normalized (alpha, beta) for display
@@ -78,7 +78,7 @@ class MoveDispatcher(QObject):
         rel_x = abs_x - cx
         rel_y = abs_y - cy
         # Axis inversion matches the kinematic convention in Grid2d / CameraWidget.
-        solutions = solve_inverse_kinematics(-rel_x, -rel_y, SHORT_ARM_LENGTH, LONG_ARM_LENGTH)
+        solutions = solve_inverse_kinematics(-rel_x, -rel_y, SHORT_ARM_LENGTH_MM, LONG_ARM_LENGTH_MM)
         if solutions:
             alpha, beta = solutions[0]
             self.angles_updated.emit(

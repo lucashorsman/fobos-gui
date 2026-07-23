@@ -6,7 +6,7 @@ HardwareManager.
 """
 
 from widgets.grid2d import Grid2d
-from PySide6.QtWidgets import QMainWindow, QWidget, QSplitter, QLabel
+from PySide6.QtWidgets import QMainWindow, QWidget, QSplitter, QLabel, QMessageBox
 from PySide6.QtCore import Qt, QEvent
 from core.app_model import AppModel
 from core.hardware_manager import HardwareManager
@@ -88,12 +88,14 @@ class MainWindow(QMainWindow):
         """AppModel → MainWindow (view refresh)."""
         self.model.model_updated.connect(self._on_model_updated)
         self.model.connection_updated.connect(self._on_connection_updated)
+        self.model.verify_results_updated.connect(self._on_verify_results)
 
     def _wire_hardware_signals(self):
         """HardwareManager ↔ MainWindow ↔ widgets."""
         self.hardware.fps_ready.connect(self._on_fps_ready)
         self.hardware.positioners_registered.connect(self._on_positioners_registered)
         self.hardware.frame_ready.connect(self.camera_widget.update_frame)
+        self.hardware.manual_laser_toggle_requested.connect(self._on_manual_laser_toggle_requested)
 
         self.status_bar.reconnect_fps_requested.connect(self._on_reconnect_fps)
         self.status_bar.reconnect_camera_requested.connect(self.hardware.reconnect_camera)
@@ -120,6 +122,7 @@ class MainWindow(QMainWindow):
         self.control_panel.calibrate_requested.connect(self.camera_widget.start_calibration)
         self.camera_widget.calibration_completed.connect(self.control_panel.on_calibration_completed)
         self.control_panel.swap_solution_requested.connect(self.model.swap_solution)
+        self.control_panel.verify_requested.connect(self._on_verify_requested)
 
     # -- Slots ---------------------------------------------------------------
 
@@ -148,6 +151,22 @@ class MainWindow(QMainWindow):
         self.control_panel.update_selected_positioner(self.model.selected_positioner_id)
         self.control_panel.update_queue_state(self.model.positioners)
         self._maybe_fill_control_panel_inputs()
+
+        # Update verify button state: enabled only when mapping is loaded,
+        # camera + FPS connected, and nothing is moving or verifying.
+        is_moving = any(
+            p.state == PositionerState.MOVING
+            for p in self.model.positioners.values()
+        )
+        verify_enabled = (
+            self.hardware.has_interpolator
+            and self.model.fps_connected
+            and self.model.camera_connected
+            and not is_moving
+        )
+        self.control_panel.update_verify_state(
+            verify_enabled, self.model.verify_in_progress
+        )
 
     def _maybe_fill_control_panel_inputs(self):
         """Fill control panel inputs only on PID-switch or positioner settle.
@@ -220,3 +239,54 @@ class MainWindow(QMainWindow):
         self.hardware.stop_camera()
         self.hardware.stop_fps()
         super().closeEvent(event)
+
+    # -- Verify feature ------------------------------------------------------
+
+    def _on_verify_requested(self):
+        """Handle the Verify button press.
+
+        For the stream backend (has laser control), starts verification
+        immediately.  For the Vimba backend, pops a dialog asking the
+        operator to manually toggle the laser before proceeding.
+        """
+        self.model.set_verify_in_progress(True)
+
+        if self.hardware.has_laser_control:
+            # Stream backend: automated laser control
+            self.hardware.run_verify()
+        else:
+            # Vimba backend: manual laser dialog (option B from the plan)
+            reply = QMessageBox.question(
+                self,
+                "Manual Laser Control",
+                "The Vimba camera backend does not support automated laser control.\n\n"
+                "Please ensure the laser is currently ON, then click 'Yes' to proceed "
+                "with verification.\n\n"
+                "The system will:\n"
+                "1. Capture a frame (laser ON)\n"
+                "2. Ask you to turn the laser OFF\n"
+                "3. Capture a reference frame\n"
+                "4. Ask you to turn the laser back ON",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self.hardware.run_verify()
+            else:
+                self.model.set_verify_in_progress(False)
+
+    def _on_manual_laser_toggle_requested(self, want_on: bool):
+        """Called by VerifyWorker (via HardwareManager) when Vimba backend is active."""
+        state = "ON" if want_on else "OFF"
+        QMessageBox.information(
+            self,
+            "Manual Laser Control",
+            f"Please turn the laser {state}, then click OK to continue.",
+        )
+        self.hardware.confirm_manual_laser_toggle()
+
+    def _on_verify_results(self):
+        """Called when AppModel.verify_results_updated fires."""
+        self.control_panel.show_verify_results(
+            self.model.last_verify_results,
+            self.model.last_verify_unmatched,
+        )

@@ -1,8 +1,10 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
-                               QLabel, QLineEdit, QPushButton, QComboBox)
-from PySide6.QtCore import Signal, QTimer
+                               QLabel, QLineEdit, QPushButton, QComboBox,
+                               QDialog, QTableWidget, QTableWidgetItem,
+                               QHeaderView, QDialogButtonBox)
+from PySide6.QtCore import Signal, QTimer, Qt
 from PySide6.QtGui import QDoubleValidator
-from helpers.constants import PositionerState, SHORT_ARM_LENGTH, LONG_ARM_LENGTH
+from helpers.constants import PositionerState, SHORT_ARM_LENGTH_MM, LONG_ARM_LENGTH_MM
 from helpers.annulus import solve_forward_kinematics
 
 class ControlPanel(QWidget):
@@ -14,6 +16,7 @@ class ControlPanel(QWidget):
     selection_changed = Signal(int)
     swap_solution_requested = Signal(int)
     calibrate_requested = Signal()
+    verify_requested = Signal()
 
     def __init__(self):
         super().__init__()
@@ -110,6 +113,13 @@ class ControlPanel(QWidget):
         self.calibrate_button.setObjectName("calibrate_button")
         self.calibrate_button.clicked.connect(self.calibrate_requested.emit)
         layout.addWidget(self.calibrate_button)
+
+        # Verify button
+        self.verify_button = QPushButton("Verify Positions")
+        self.verify_button.setObjectName("verify_button")
+        self.verify_button.setEnabled(False)
+        self.verify_button.clicked.connect(self.verify_requested.emit)
+        layout.addWidget(self.verify_button)
         
         # Explicit tab order: Alpha→Beta→X→Y→Go
         self.setTabOrder(self.alpha_input, self.beta_input)
@@ -274,7 +284,7 @@ class ControlPanel(QWidget):
         try:
             cx, cy = pos.center
             x, y = solve_forward_kinematics(
-                pos.alpha, pos.beta, cx, cy, SHORT_ARM_LENGTH, LONG_ARM_LENGTH
+                pos.alpha, pos.beta, cx, cy, SHORT_ARM_LENGTH_MM, LONG_ARM_LENGTH_MM
             )
             self.x_input.setText(f"{x:.3f}")
             self.y_input.setText(f"{y:.3f}")
@@ -302,3 +312,102 @@ class ControlPanel(QWidget):
         current_pid = self.pid_combo.currentData()
         if current_pid is not None:
             self.swap_solution_requested.emit(current_pid)
+
+    # -- Verify feature ------------------------------------------------------
+
+    def update_verify_state(self, verify_enabled: bool, verify_in_progress: bool):
+        """Enable/disable the Verify button based on system readiness.
+
+        Called by MainWindow whenever model state changes.  The button is
+        enabled only when:
+        - The laser mapping interpolator is loaded
+        - Camera and FPS are connected
+        - No move or verify is in progress
+        """
+        if verify_in_progress:
+            self.verify_button.setText("Verifying...")
+            self.verify_button.setEnabled(False)
+        elif verify_enabled:
+            self.verify_button.setText("Verify Positions")
+            self.verify_button.setEnabled(True)
+        else:
+            self.verify_button.setText("Verify Positions")
+            self.verify_button.setEnabled(False)
+
+    def show_verify_results(self, results: dict, unmatched: list | None = None):
+        """Pop a modal dialog showing the per-positioner verify results."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Verify Results")
+        dialog.setMinimumWidth(600)
+
+        layout = QVBoxLayout(dialog)
+
+        # Summary label
+        n_total = len(results)
+        n_pass = sum(1 for r in results.values() if r.get("pass"))
+        n_found = sum(1 for r in results.values() if r.get("found"))
+        summary_color = "#4ade80" if n_pass == n_total else "#f87171"
+        summary = QLabel(
+            f"<b style='color: {summary_color};'>"
+            f"{n_pass}/{n_total} PASSED</b> &nbsp; "
+            f"({n_found}/{n_total} detected)"
+        )
+        layout.addWidget(summary)
+
+        # Results table
+        table = QTableWidget()
+        table.setColumnCount(6)
+        table.setHorizontalHeaderLabels([
+            "PID", "Expected (px)", "Measured (px)", "Error (px)", "Flux", "Result"
+        ])
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        table.setRowCount(n_total)
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+
+        for row, (fid, r) in enumerate(sorted(results.items())):
+            table.setItem(row, 0, QTableWidgetItem(str(fid)))
+
+            ex, ey = r.get("expected_px", (0, 0))
+            table.setItem(row, 1, QTableWidgetItem(f"({ex:.1f}, {ey:.1f})"))
+
+            if r.get("measured_px"):
+                mx, my = r["measured_px"]
+                table.setItem(row, 2, QTableWidgetItem(f"({mx:.1f}, {my:.1f})"))
+            else:
+                table.setItem(row, 2, QTableWidgetItem("—"))
+
+            if r.get("error_px") is not None:
+                table.setItem(row, 3, QTableWidgetItem(f"{r['error_px']:.2f}"))
+            else:
+                table.setItem(row, 3, QTableWidgetItem("—"))
+
+            table.setItem(row, 4, QTableWidgetItem(f"{r.get('flux', 0):.0f}"))
+
+            if r.get("pass"):
+                result_item = QTableWidgetItem("✓ PASS")
+                result_item.setForeground(Qt.green)
+            elif r.get("found"):
+                result_item = QTableWidgetItem("✗ FAIL")
+                result_item.setForeground(Qt.red)
+            else:
+                result_item = QTableWidgetItem("NOT FOUND")
+                result_item.setForeground(Qt.yellow)
+            table.setItem(row, 5, result_item)
+
+        layout.addWidget(table)
+
+        # Unmatched blobs info
+        if unmatched:
+            unmatched_label = QLabel(
+                f"<i>{len(unmatched)} unmatched blob(s) detected "
+                f"(stray light / unexpected spots)</i>"
+            )
+            unmatched_label.setStyleSheet("color: #facc15;")
+            layout.addWidget(unmatched_label)
+
+        # Close button
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        buttons.accepted.connect(dialog.accept)
+        layout.addWidget(buttons)
+
+        dialog.exec()
