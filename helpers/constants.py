@@ -21,14 +21,31 @@ class PositionerState(StrEnum):
 #Positioner radius in pixel space = 333.45938
 #so arm1 + arm2 = 22.4mm
 
-# SHORT_ARM_LENGTH =7.0  # in mm
-# LONG_ARM_LENGTH = 15.4 # in mm
-# SHORT_ARM_LENGTH = 100.0  # actually in pixel space
-# LONG_ARM_LENGTH = 150.0
-SHORT_ARM_LENGTH = 100.0
-LONG_ARM_LENGTH = 230.0
+# Using the circle fit radii to determine a pixel scale factor:
+# Average radius in px = (301.77877 + 333.45938) / 2 = 317.619075
+# This corresponds to the physical radius of 22.4 mm (from 44.8mm diameter)
+MM_TO_PX = ((301.77877 + 333.45938) / 2.0) / 22.4
 
-GRID_SPACING = 100.0  # in mm
+SHORT_ARM_LENGTH_MM = 7.6
+LONG_ARM_LENGTH_MM = 15.0
+
+# -- Verify feature constants ------------------------------------------------
+# Pass/fail tolerance for metrology verification (pixels).
+# At ~14 px/mm this is roughly 0.7 mm positional accuracy.
+VERIFY_TOLERANCE_PX = 30.0
+
+# Half-width (pixels) of the search window around the expected laser position.
+# Generous at 75 px to compensate for interpolation error with the current
+# sparse (3α × 5β = 15-point) sweep.  After a denser resweep (recommended:
+# 6×6 = 36 pts minimum, 9×9 = 81 pts ideal) this can be tightened to ~25 px.
+VERIFY_ROI_SIZE = 75
+
+# Detection threshold — minimum intensity difference (laser ON − laser OFF)
+# to count as signal in the frame-subtraction step.
+VERIFY_THRESH = 15.0
+
+
+GRID_SPACING = 6.35  # in mm (4 squares per inch)
 
 
 def normalize_for_positioner(angle: float) -> float:

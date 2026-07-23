@@ -30,6 +30,7 @@ fobos-gui/                        # repo root
 ├── style.qss                     # QSS dark-theme stylesheet loaded at startup.
 ├── calibration.json              # Persisted camera↔physical calibration (auto-read/written).
 ├── positioner_centers.json       # Persisted positioner centers mapping.
+├── laser_mapping.json            # Persisted empirical mapping of (alpha, beta) -> pixel coords.
 ├── pyproject.toml                # uv-managed dependencies.
 ├── core/
 │   ├── app_model.py              # Central state store. Single source of truth (uses PositionerData dataclass).
@@ -50,7 +51,8 @@ fobos-gui/                        # repo root
 │   ├── positioner_worker.py      # QObject. CURRENTLY UNUSED — kept for reference (see note).
 │   ├── mock_fps.py               # MockFPS / MockPositioner — enabled via FOBOS_MOCK=1.
 │   ├── stream_worker.py          # QThread. Streams from RPi5 camera bridge via WebSockets.
-│   └── vimba_worker.py           # QThread. Owns vmbpy camera session and streaming.
+│   ├── vimba_worker.py           # QThread. Owns vmbpy camera session and streaming.
+│   └── verify_worker.py          # QThread. One-shot verification pass (frame capture + blob detection).
 └── widgets/
     ├── camera_widget.py          # Live frame display, projected positioner overlay, click-to-queue.
     ├── grid2d.py                 # 2D top-down positioner view, click-to-queue.
@@ -88,6 +90,7 @@ There are three threads:
 - **`VimbaWorker` / `StreamWorker` thread** — Owns the camera session or WebSocket stream for the lifetime of
   the app. Streams frames with a synchronous polling loop (`cam.get_frame()`) or an async WebSocket loop
   and emits `frame_ready(np.ndarray)` on each complete frame.
+- **`VerifyWorker` thread** — A short-lived one-shot thread spawned by `HardwareManager.run_verify()`. Connects temporarily to the active camera worker to capture reference and check frames, then runs the `verify_fibers_global` Hungarian matching algorithm without blocking the UI.
 
 
 > **Note on `PositionerWorker`:** `workers/positioner_worker.py` exists but
@@ -152,6 +155,10 @@ All connections are made in `core/main_window.py`. `MainWindow` acts as the cent
 | `swap_solution_requested(pid)` | `ControlPanel` | `AppModel.swap_solution` |
 | `calibrate_requested()` | `ControlPanel` | `CameraWidget.start_calibration` |
 | `calibration_completed()` | `CameraWidget` | `ControlPanel.on_calibration_completed` |
+| `verify_requested()` | `ControlPanel` | `MainWindow._on_verify_requested` → `HardwareManager.run_verify` |
+| `verify_results_updated()` | `AppModel` | `MainWindow._on_verify_results` → `ControlPanel.show_verify_results` |
+| `verify_complete(dict, list)` | `VerifyWorker` | `HardwareManager._on_verify_complete` → `AppModel.set_verify_results` |
+| `verify_failed(str)` | `VerifyWorker` | `HardwareManager._on_verify_failed` → `HardwareManager.error` |
 | `swap_requested()` | `Grid2d` / `CameraWidget` | `MainWindow.on_swap_views_requested` |
 | `reconnect_fps_requested()` | `StatusBar` | `MainWindow._on_reconnect_fps` → `HardwareManager.reconnect_fps` |
 | `reconnect_camera_requested()` | `StatusBar` | `HardwareManager.reconnect_camera` |
@@ -364,7 +371,7 @@ The **kinematic frame convention** applied in both views:
 
 ```python
 # The positioner's local X/Y are inverted relative to the global axes
-solutions = solve_inverse_kinematics(-rel_x, -rel_y, SHORT_ARM_LENGTH, LONG_ARM_LENGTH)
+solutions = solve_inverse_kinematics(-rel_x, -rel_y, SHORT_ARM_LENGTH_MM, LONG_ARM_LENGTH_MM)
 ```
 
 And in `drawing.py`:
@@ -374,6 +381,30 @@ painter.scale(-1, -1)  # flip painter into positioner's kinematic frame
 ```
 
 ---
+
+## Metrology / Verify Workflow
+
+The "Verify Positions" feature allows an operator to empirically confirm that positioners have reached their commanded targets using the camera and laser diodes.
+
+### The Laser Mapping
+The expected location of each positioner's laser spot is interpolated from an empirical grid dataset (`laser_mapping.json`) captured by the `collect_sweep.py` tool.
+
+Because a simple affine projection from physical kinematics to camera pixels ignores mechanical flexure and fiber decentering, the interpolation provides sub-millimeter precision. When a requested pose falls outside the convex hull of the mapped grid, the interpolator falls back to a kinematic projection using the four-point calibration matrix.
+
+### Verify Architecture
+1. **Trigger:** `ControlPanel` emits `verify_requested()` → `MainWindow` signals `HardwareManager.run_verify()`.
+2. **Setup:** `HardwareManager` builds expected pixel coordinates for all positioners using `LaserMappingInterpolator` and the current `AppModel` angles.
+3. **Thread Spin-up:** `HardwareManager` spawns a `VerifyWorker` thread.
+4. **Capture Sequence:**
+   - The worker waits for a `frame_ready` event (capturing a **check frame** with lasers ON).
+   - If using `StreamWorker` (RPi bridge), the worker sends a `laser_off` command and waits for a `status` confirmation.
+   - The worker waits for another `frame_ready` event (capturing a **reference frame** with lasers OFF).
+   - `laser_on` is sent to restore the hardware state.
+5. **Detection:** The worker subtracts the reference frame from the check frame, thresholds it, and detects blobs.
+6. **Disambiguation:** `verify_fibers_global` uses the Hungarian matching algorithm to pair blobs to expected positions safely, rejecting any match farther away than `VERIFY_ROI_SIZE` (fallback bounds).
+7. **Results:** The worker emits `verify_complete`, `AppModel` is updated, and `MainWindow` pops a dialog summarizing pass/fail metrics.
+
+**Note on VimbaWorker:** If `VimbaWorker` is active, `MainWindow` pops a dialog asking the operator to manually toggle the laser switch on the physical hardware before continuing the sequence. If a user is using VimbaWorker, it is expected that they are able to toggle the laser switch on the physical hardware. If not, they should use `StreamWorker` instead.
 
 ## Asyncio / QThread bridge
 
