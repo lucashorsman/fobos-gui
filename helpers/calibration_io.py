@@ -11,9 +11,9 @@ import json
 import os
 from typing import List, Optional, Tuple
 
-# Default path: project root (one level above this helpers/ directory)
+# Default path: config directory (one level above this helpers/ directory)
 DEFAULT_CALIBRATION_PATH = os.path.normpath(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "calibration.json")
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config", "calibration.json")
 )
 
 

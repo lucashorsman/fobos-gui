@@ -1,5 +1,4 @@
-from helpers.constants import LONG_ARM_LENGTH
-from helpers.constants import SHORT_ARM_LENGTH
+
 import math
 #given a target point (x, y) and the lengths of two links (l1, l2), calculate the two possible joint angle solutions (theta1, theta2) to reach that point. The function should return the angles in degrees and handle cases where the point is unreachable due to being outside the annulus defined by the link lengths.
 def solve_inverse_kinematics(x, y, l1, l2):

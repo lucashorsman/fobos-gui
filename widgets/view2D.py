@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QApplication, QPushButton, QWidget
 
 from helpers.annulus import solve_inverse_kinematics
 import math
-from helpers.constants import SHORT_ARM_LENGTH, LONG_ARM_LENGTH
+from helpers.constants import SHORT_ARM_LENGTH_MM, LONG_ARM_LENGTH_MM
 
 
 class View2D(QWidget):
@@ -25,7 +25,7 @@ class View2D(QWidget):
         self._selected_positioner_state = "ready"
         self.panel_width = 170
         self.margin = 24
-        self.link_lengths = (SHORT_ARM_LENGTH, LONG_ARM_LENGTH)
+        self.link_lengths = (SHORT_ARM_LENGTH_MM, LONG_ARM_LENGTH_MM)
         self.target_offset = None
         self._positioner_ids = []
         self._selected_pid = None

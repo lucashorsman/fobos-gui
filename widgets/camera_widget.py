@@ -3,7 +3,7 @@
 from __future__ import annotations
 import datetime
 import os
-
+import json
 import cv2
 from PySide6.QtCore import QTimer
 
@@ -127,10 +127,10 @@ class CameraWidget(QWidget, PanZoomMixin):
         self._image.fill(Qt.darkGray)
 
         self.projection = PositionerProjection()
-        self.target_offset = None
+
         # Active physical reference points (TL, TR, BL, BR) in positioner mm coordinates.
         # These define what the 4 clicked camera points map TO during calibration.
-        self.physical_pts = [(-790, 1050), (880, 1030), (-1260, -1080), (1140, -1100)]
+        self.physical_pts = [(-50.165, 66.675), (55.88, 65.405), (-80.01, -68.58), (72.39, -69.85)]
         #this is found by counting the number of boxes, then multiplying by GRID_SPACING 
         self.camera_pts = []
 
@@ -260,6 +260,25 @@ class CameraWidget(QWidget, PanZoomMixin):
 
         if saved:
             print(f"CameraWidget: frame saved to {filename}")
+
+            metadata = {}
+            if hasattr(self, "_positioners_dict") and self._positioners_dict:
+                for pid, pdata in self._positioners_dict.items():
+                    px, py = self.projection.physical_to_camera(pdata.center[0], pdata.center[1])
+                    metadata[pid] = {
+                        "alpha": pdata.alpha,
+                        "beta": pdata.beta,
+                        "pixel_x": px,
+                        "pixel_y": py
+                    }
+            
+            json_filename = os.path.join(save_dir, f"frame_{timestamp}.json")
+            try:
+                with open(json_filename, "w") as f:
+                    json.dump(metadata, f, indent=4)
+                print(f"CameraWidget: metadata saved to {json_filename}")
+            except Exception as exc:
+                print(f"CameraWidget: metadata save failed: {exc}")
         else:
             print("CameraWidget: no frame available to save")
 
@@ -379,9 +398,6 @@ class CameraWidget(QWidget, PanZoomMixin):
         if action == "select":
             self.selection_changed.emit(pid)
         elif action == "queue":
-            # Store target offset for visual feedback (red dot)
-            cx, cy = self._positioners_dict[pid].center
-            self.target_offset = (grid_x - cx, grid_y - cy)
             self.move_queued.emit(pid, solutions)
 
         self.update()
@@ -443,16 +459,7 @@ class CameraWidget(QWidget, PanZoomMixin):
                 is_selected = (pid == self._selected_pid)
                 draw_positioner(painter, pid, p_info, is_selected, draw_arms=True)
 
-                if is_selected and self.target_offset is not None:
-                    painter.save()
-                    cx, cy = p_info.center
-                    painter.translate(cx, cy)
-                    pen = QPen(Qt.red)
-                    pen.setCosmetic(True)
-                    painter.setPen(pen)
-                    painter.setBrush(Qt.red)
-                    painter.drawEllipse(QPointF(self.target_offset[0], self.target_offset[1]), 1.5, 1.5)
-                    painter.restore()
+
 
             painter.restore()
 

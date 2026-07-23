@@ -45,8 +45,8 @@ class PositionerWorker(QObject):
             # built-in collision detection across multiple arms, we should refactor 
             # this architecture to submit a single bulk dictionary to a centralized 
             # worker rather than firing off individual concurrent goto commands.
+            print("goto called for positioner", self.positioner_id, "to", (alpha, beta))
             await self._fps.goto({self.positioner_id: (alpha, beta)})
-            
             self.move_done.emit(self.positioner_id)
         except Exception as e:
             self.error.emit(self.positioner_id, str(e))

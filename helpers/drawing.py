@@ -1,11 +1,11 @@
 import math
 from PySide6.QtCore import QPointF, Qt, QRectF
 from PySide6.QtGui import QPen, QColor, QPainterPath
-from helpers.constants import GRID_SPACING, SHORT_ARM_LENGTH, LONG_ARM_LENGTH
+from helpers.constants import GRID_SPACING, SHORT_ARM_LENGTH_MM, LONG_ARM_LENGTH_MM
 
 def draw_positioner(painter, pid, pos_info, is_selected, draw_arms=True):
-    inner_radius = abs(SHORT_ARM_LENGTH - LONG_ARM_LENGTH)
-    outer_radius = SHORT_ARM_LENGTH + LONG_ARM_LENGTH
+    inner_radius = abs(SHORT_ARM_LENGTH_MM - LONG_ARM_LENGTH_MM)
+    outer_radius = SHORT_ARM_LENGTH_MM + LONG_ARM_LENGTH_MM
 
     cx, cy = pos_info.center
     
@@ -43,11 +43,11 @@ def draw_positioner(painter, pid, pos_info, is_selected, draw_arms=True):
         alpha_rad = math.radians(alpha_deg)
         beta_rad = math.radians(alpha_deg + beta_deg) 
         
-        joint_x = SHORT_ARM_LENGTH * math.cos(alpha_rad)
-        joint_y = SHORT_ARM_LENGTH * math.sin(alpha_rad)
+        joint_x = SHORT_ARM_LENGTH_MM * math.cos(alpha_rad)
+        joint_y = SHORT_ARM_LENGTH_MM * math.sin(alpha_rad)
         
-        end_x = joint_x + LONG_ARM_LENGTH * math.cos(beta_rad)
-        end_y = joint_y + LONG_ARM_LENGTH * math.sin(beta_rad)
+        end_x = joint_x + LONG_ARM_LENGTH_MM * math.cos(beta_rad)
+        end_y = joint_y + LONG_ARM_LENGTH_MM * math.sin(beta_rad)
         
         arm_pen = QPen(Qt.yellow if is_selected else Qt.gray)
         arm_pen.setWidthF(3.0)
@@ -63,11 +63,11 @@ def draw_positioner(painter, pid, pos_info, is_selected, draw_arms=True):
         queued_alpha_rad = math.radians(queued_alpha_deg)
         queued_beta_rad = math.radians(queued_alpha_deg + queued_beta_deg) 
         
-        queued_joint_x = SHORT_ARM_LENGTH * math.cos(queued_alpha_rad)
-        queued_joint_y = SHORT_ARM_LENGTH * math.sin(queued_alpha_rad)
+        queued_joint_x = SHORT_ARM_LENGTH_MM * math.cos(queued_alpha_rad)
+        queued_joint_y = SHORT_ARM_LENGTH_MM * math.sin(queued_alpha_rad)
         
-        queued_end_x = queued_joint_x + LONG_ARM_LENGTH * math.cos(queued_beta_rad)
-        queued_end_y = queued_joint_y + LONG_ARM_LENGTH * math.sin(queued_beta_rad)
+        queued_end_x = queued_joint_x + LONG_ARM_LENGTH_MM * math.cos(queued_beta_rad)
+        queued_end_y = queued_joint_y + LONG_ARM_LENGTH_MM * math.sin(queued_beta_rad)
         
         queued_arm_pen = QPen(QColor("#3b82f6"))
         queued_arm_pen.setWidthF(3.0)
@@ -78,14 +78,19 @@ def draw_positioner(painter, pid, pos_info, is_selected, draw_arms=True):
         painter.drawLine(QPointF(0, 0), QPointF(queued_joint_x, queued_joint_y))
         painter.drawLine(QPointF(queued_joint_x, queued_joint_y), QPointF(queued_end_x, queued_end_y))
 
-    # Draw center point
+    current_scale = abs(painter.transform().m11())
+    if current_scale == 0:
+        current_scale = 1.0
+
+    # Draw center point (2 screen pixels radius)
     painter.setPen(Qt.white)
     painter.setBrush(Qt.white)
-    painter.drawEllipse(QPointF(0, 0), 2, 2)
+    dot_radius = 2.0 / current_scale
+    painter.drawEllipse(QPointF(0, 0), dot_radius, dot_radius)
 
-    # Draw PID text
+    # Draw PID text (12 points on screen)
     font = painter.font()
-    font.setPixelSize(40)
+    font.setPointSizeF(12.0)
     painter.setFont(font)
     if is_selected:
         painter.setPen(Qt.white)
@@ -98,7 +103,13 @@ def draw_positioner(painter, pid, pos_info, is_selected, draw_arms=True):
     scale_y = -1 if t.m22() < 0 else 1
     if scale_x != 1 or scale_y != 1:
         painter.scale(scale_x, scale_y)
-    rect = QRectF(-50, -50, 100, 100)
+        
+    # Unscale the painter so the text draws crisply at screen pixel size
+    painter.scale(1.0 / current_scale, 1.0 / current_scale)
+    
+    # Use a massive rect to prevent clipping
+    rect_size = 1000.0
+    rect = QRectF(-rect_size/2, -rect_size/2, rect_size, rect_size)
     painter.drawText(rect, Qt.AlignCenter, str(pid))
     painter.restore()
 
@@ -132,7 +143,7 @@ def draw_coordinate_grid(painter, rect, spacing=GRID_SPACING):
     axis_pen.setCosmetic(True)
 
     font = painter.font()
-    font.setPixelSize(int(spacing * 0.3) if spacing > 10 else 12)
+    font.setPointSizeF(10.0)
     painter.setFont(font)
     text_pen = QPen(QColor(255, 255, 255, 200))
 
@@ -155,10 +166,16 @@ def draw_coordinate_grid(painter, rect, spacing=GRID_SPACING):
         painter.translate(px, py)
         if painter.transform().m22() < 0:
             painter.scale(1, -1)
+            
+        current_scale = abs(painter.transform().m11())
+        if current_scale > 0:
+            painter.scale(1.0 / current_scale, 1.0 / current_scale)
+            
         painter.setPen(text_pen)
         
-        rect_w = spacing * 2
-        rect_h = spacing
+        # Now we are in screen pixels, so offsets can be directly used
+        rect_w = 1000.0
+        rect_h = 1000.0
         tr = QRectF(-rect_w/2 + x_offset, -rect_h/2 + y_offset, rect_w, rect_h)
         painter.drawText(tr, align, text)
         painter.restore()

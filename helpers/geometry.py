@@ -1,5 +1,5 @@
 import math
-from helpers.constants import SHORT_ARM_LENGTH, LONG_ARM_LENGTH
+from helpers.constants import SHORT_ARM_LENGTH_MM, LONG_ARM_LENGTH_MM
 from helpers.annulus import solve_inverse_kinematics
 
 
@@ -15,12 +15,14 @@ def get_clicked_positioner(click_x, click_y, positioners_dict, selected_pid):
     if not positioners_dict:
         return None
 
-    outer_radius = SHORT_ARM_LENGTH + LONG_ARM_LENGTH
+    max_reach = SHORT_ARM_LENGTH_MM + LONG_ARM_LENGTH_MM
+    min_reach = abs(LONG_ARM_LENGTH_MM - SHORT_ARM_LENGTH_MM)
 
     # Check if clicked inside the currently selected positioner first
     if selected_pid is not None and selected_pid in positioners_dict:
         cx, cy = positioners_dict[selected_pid].center
-        if math.hypot(click_x - cx, click_y - cy) <= outer_radius:
+        dist = math.hypot(click_x - cx, click_y - cy)
+        if min_reach <= dist <= max_reach:
             return selected_pid
 
     # If not, find the closest positioner
@@ -29,7 +31,7 @@ def get_clicked_positioner(click_x, click_y, positioners_dict, selected_pid):
     for pid, pos in positioners_dict.items():
         cx, cy = pos.center
         dist = math.hypot(click_x - cx, click_y - cy)
-        if dist <= outer_radius and dist < min_dist:
+        if dist <= max_reach and dist < min_dist:
             min_dist = dist
             closest_pid = pid
 
@@ -59,7 +61,7 @@ def resolve_positioner_click(click_x, click_y, positioners_dict, selected_pid):
     rel_y = click_y - cy
 
     # The positioner's kinematic frame is rotated by 180 degrees (inverted X and Y)
-    solutions = solve_inverse_kinematics(-rel_x, -rel_y, SHORT_ARM_LENGTH, LONG_ARM_LENGTH)
+    solutions = solve_inverse_kinematics(-rel_x, -rel_y, SHORT_ARM_LENGTH_MM, LONG_ARM_LENGTH_MM)
     if solutions:
         return "queue", closest_pid, solutions
 
