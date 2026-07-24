@@ -11,6 +11,7 @@ import math
 from PySide6.QtCore import QPoint, QPointF, Qt, Slot, Signal, QRectF, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QImage, QPainter, QTransform, QPen, QPainterPath, QColor   
 from PySide6.QtWidgets import QLabel, QListWidget, QMessageBox, QPushButton, QVBoxLayout, QHBoxLayout, QWidget, QDialog, QFormLayout, QLineEdit, QSlider
+from tablerqicon import TablerQIcon
 from helpers.constants import GRID_SPACING
 from helpers.geometry import resolve_positioner_click
 from helpers.projection import PositionerProjection
@@ -154,10 +155,12 @@ class CameraWidget(QWidget, PanZoomMixin):
         
         top_layout = QHBoxLayout()
         self.swap_button = QPushButton("Swap Views")
+        self.swap_button.setIcon(TablerQIcon.switch_horizontal)
         self.swap_button.clicked.connect(self.swap_requested.emit)
         top_layout.addWidget(self.swap_button, alignment=Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         
         self.settings_button = QPushButton("Camera Functions")
+        self.settings_button.setIcon(TablerQIcon.settings)
         self.settings_button.clicked.connect(self.toggle_settings_panel)
         top_layout.addWidget(self.settings_button, alignment=Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
         

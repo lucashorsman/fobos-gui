@@ -7,6 +7,7 @@ import sys
 from PySide6.QtCore import QPointF, Qt, Signal, QRectF
 from PySide6.QtGui import QPainter, QPen, QColor, QPainterPath
 from PySide6.QtWidgets import QApplication, QPushButton, QWidget, QVBoxLayout
+from tablerqicon import TablerQIcon
 
 from helpers.constants import GRID_SPACING
 
@@ -28,6 +29,7 @@ class Grid2d(QWidget, PanZoomMixin):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
         self.swap_button = QPushButton("Swap Views")
+        self.swap_button.setIcon(TablerQIcon.switch_horizontal)
         self.swap_button.clicked.connect(self.swap_requested.emit)
         layout.addWidget(self.swap_button, alignment=Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         layout.addStretch()

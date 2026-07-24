@@ -16,6 +16,7 @@ dependencies = [
     "matplotlib>=3.10",
     "opencv-python",
     "websockets",
+    "tabler-qicon",
 ]
 
 [tool.uv.sources]

@@ -35,9 +35,6 @@ if __name__ == "__main__":
         [20,-9],
         [10,11],
         [-12,13]
-
-
-        # ... add true mm points here
     ])
     positioner_points_967 = np.array([
         [-21,31],

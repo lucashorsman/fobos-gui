@@ -24,7 +24,7 @@ class PositionerState(StrEnum):
 # Using the circle fit radii to determine a pixel scale factor:
 # Average radius in px = (301.77877 + 333.45938) / 2 = 317.619075
 # This corresponds to the physical radius of 22.4 mm (from 44.8mm diameter)
-MM_TO_PX = ((301.77877 + 333.45938) / 2.0) / 22.4
+# MM_TO_PX = ((301.77877 + 333.45938) / 2.0) / 22.4
 
 SHORT_ARM_LENGTH_MM = 7.6
 LONG_ARM_LENGTH_MM = 15.0
@@ -45,8 +45,12 @@ VERIFY_ROI_SIZE = 75
 VERIFY_THRESH = 15.0
 
 
-GRID_SPACING = 6.35  # in mm (4 squares per inch)
+GRID_SPACING = 6.35  # in mm (4 squares per inch) (4 squares on the graph paper = 1 inch)
 
+#so it takes 4 squares per inch, which means 1 square is 1/4 of an inch. 
+#1 inch = 25.4mm, so 1/4 inch = 6.35mm
+#therefore, 1 square is 6.35mm
+#so the grid spacing is 6.35mm
 
 def normalize_for_positioner(angle: float) -> float:
     """Normalize an angle (degrees) into the positioner's accepted range [-10°, 370°]."""

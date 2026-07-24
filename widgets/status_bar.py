@@ -2,6 +2,7 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEd
 from PySide6.QtCore import Signal
 from helpers.annulus import solve_forward_kinematics
 from helpers.constants import SHORT_ARM_LENGTH_MM, LONG_ARM_LENGTH_MM
+from tablerqicon import TablerQIcon
 
 class StatusBar(QWidget):
     reconnect_fps_requested = Signal()
@@ -19,12 +20,14 @@ class StatusBar(QWidget):
         self.fps_status_indicator = QLabel("OFFLINE")
         self.fps_status_indicator.setObjectName("status_offline")
         self.btn_reconnect_fps = QPushButton("Reconnect FPS")
+        self.btn_reconnect_fps.setIcon(TablerQIcon.refresh)
         self.btn_reconnect_fps.clicked.connect(self.reconnect_fps_requested.emit)
         
         self.camera_status_label = QLabel("Camera")
         self.camera_status_indicator = QLabel("OFFLINE")
         self.camera_status_indicator.setObjectName("status_offline")
         self.btn_reconnect_camera = QPushButton("Reconnect Camera")
+        self.btn_reconnect_camera.setIcon(TablerQIcon.refresh)
         self.btn_reconnect_camera.clicked.connect(self.reconnect_camera_requested.emit)
         
         conn_layout.addWidget(self.fps_status_label)

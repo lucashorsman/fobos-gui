@@ -3,6 +3,7 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QFont
 from core.main_window import MainWindow
 import sys
+import logging
 
 def main():
     app = QApplication(sys.argv)

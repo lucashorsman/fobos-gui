@@ -6,12 +6,15 @@ from PySide6.QtCore import Signal, QTimer, Qt
 from PySide6.QtGui import QDoubleValidator
 from helpers.constants import PositionerState, SHORT_ARM_LENGTH_MM, LONG_ARM_LENGTH_MM
 from helpers.annulus import solve_forward_kinematics
+from tablerqicon import TablerQIcon
 
 class ControlPanel(QWidget):
     # Angle mode: emits positioner_id, alpha, beta
     move_requested = Signal(int, float, float)
-    # XY mode: emits positioner_id, abs_x, abs_y. IK + center handled by MainWindow
-    xy_move_requested = Signal(int, float, float)
+    # XY mode: emits positioner_id, abs_x, abs_y
+    xy_queue_requested = Signal(int, float, float)
+    # Single send for queued target
+    single_queued_move_requested = Signal(int)
     batch_move_requested = Signal()
     selection_changed = Signal(int)
     swap_solution_requested = Signal(int)
@@ -20,7 +23,6 @@ class ControlPanel(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.AngleMode = False
         self.setup_ui()
     
     def setup_ui(self):
@@ -41,48 +43,61 @@ class ControlPanel(QWidget):
         
         layout.addLayout(top_layout)
 
-        layout.addWidget(QLabel("Manual Entry"))
-
-        # Alpha / X input row
-        main_inputs_layout = QHBoxLayout()
+        # --- Raw Angle Jog ---
+        layout.addWidget(QLabel("<b>Raw angle jog</b>"))
+        angle_inputs_layout = QHBoxLayout()
+        
         alpha_layout = QHBoxLayout()
         alpha_layout.addWidget(QLabel("Alpha (°):"))
         self.alpha_input = QLineEdit()
-        self.alpha_input.installEventFilter(self)
         alpha_layout.addWidget(self.alpha_input)
-        main_inputs_layout.addLayout(alpha_layout)
+        angle_inputs_layout.addLayout(alpha_layout)
+        
+        beta_layout = QHBoxLayout()
+        beta_layout.addWidget(QLabel("Beta (°):"))
+        self.beta_input = QLineEdit()
+        beta_layout.addWidget(self.beta_input)
+        angle_inputs_layout.addLayout(beta_layout)
+        
+        layout.addLayout(angle_inputs_layout)
+        
+        self.go_button = QPushButton("Go To")
+        self.go_button.setObjectName("go_button")
+        self.go_button.setIcon(TablerQIcon.arrow_right)
+        self.go_button.clicked.connect(self._on_angle_go_clicked)
+        layout.addWidget(self.go_button)
+
+        # --- X/Y Target ---
+        layout.addWidget(QLabel("<b>X/Y Target</b>"))
+        xy_inputs_layout = QHBoxLayout()
 
         x_layout = QHBoxLayout()
         x_layout.addWidget(QLabel("X (mm):"))
         self.x_input = QLineEdit()
-        self.x_input.installEventFilter(self)
         x_layout.addWidget(self.x_input)
-        main_inputs_layout.addLayout(x_layout)
-
-        layout.addLayout(main_inputs_layout)
-
-        # Beta / Y input row
-        second_inputs_layout = QHBoxLayout()
-        beta_layout = QHBoxLayout()
-        beta_layout.addWidget(QLabel("Beta (°):"))
-        self.beta_input = QLineEdit()
-        self.beta_input.installEventFilter(self)
-        beta_layout.addWidget(self.beta_input)
-        second_inputs_layout.addLayout(beta_layout)
+        xy_inputs_layout.addLayout(x_layout)
 
         y_layout = QHBoxLayout()
         y_layout.addWidget(QLabel("Y (mm):"))
         self.y_input = QLineEdit()
-        self.y_input.installEventFilter(self)
         y_layout.addWidget(self.y_input)
-        second_inputs_layout.addLayout(y_layout)
-        layout.addLayout(second_inputs_layout)
+        xy_inputs_layout.addLayout(y_layout)
 
-        # Go To button
-        self.go_button = QPushButton("Go To")
-        self.go_button.setObjectName("go_button")
-        self.go_button.clicked.connect(self._on_go_clicked)
-        layout.addWidget(self.go_button)
+        layout.addLayout(xy_inputs_layout)
+
+        xy_buttons_layout = QHBoxLayout()
+        self.xy_queue_button = QPushButton("Add to queue")
+        self.xy_queue_button.setObjectName("xy_queue_button")
+        self.xy_queue_button.setIcon(TablerQIcon.playlist_add)
+        self.xy_queue_button.clicked.connect(self._on_xy_queue_clicked)
+        xy_buttons_layout.addWidget(self.xy_queue_button)
+
+        self.xy_send_button = QPushButton("Send")
+        self.xy_send_button.setObjectName("xy_send_button")
+        self.xy_send_button.setIcon(TablerQIcon.send)
+        self.xy_send_button.clicked.connect(self._on_xy_send_clicked)
+        xy_buttons_layout.addWidget(self.xy_send_button)
+        layout.addLayout(xy_buttons_layout)
 
         # Input validation
         angle_validator = QDoubleValidator(-10.0, 370.0, 3)
@@ -97,6 +112,7 @@ class ControlPanel(QWidget):
         # Send Queued Targets button
         self.send_queue_button = QPushButton("No Queued Targets")
         self.send_queue_button.setObjectName("send_queue_button")
+        self.send_queue_button.setIcon(TablerQIcon.rocket)
         self.send_queue_button.setEnabled(False)
         self.send_queue_button.clicked.connect(self.batch_move_requested.emit)
         layout.addWidget(self.send_queue_button)
@@ -104,28 +120,36 @@ class ControlPanel(QWidget):
         # Swap Solution button
         self.swap_solution_button = QPushButton("Swap Solution")
         self.swap_solution_button.setObjectName("swap_solution_button")
+        self.swap_solution_button.setIcon(TablerQIcon.arrows_exchange)
         self.swap_solution_button.setEnabled(False)
         self.swap_solution_button.clicked.connect(self._on_swap_solution_clicked)
         layout.addWidget(self.swap_solution_button)
 
-        #calibrate button
-        self.calibrate_button = QPushButton("Calibrate")
-        self.calibrate_button.setObjectName("calibrate_button")
-        self.calibrate_button.clicked.connect(self.calibrate_requested.emit)
-        layout.addWidget(self.calibrate_button)
+
 
         # Verify button
         self.verify_button = QPushButton("Verify Positions")
         self.verify_button.setObjectName("verify_button")
+        self.verify_button.setIcon(TablerQIcon.check)
         self.verify_button.setEnabled(False)
         self.verify_button.clicked.connect(self.verify_requested.emit)
         layout.addWidget(self.verify_button)
+
+        #calibrate button
+        self.calibrate_button = QPushButton("Calibrate")
+        self.calibrate_button.setObjectName("calibrate_button")
+        self.calibrate_button.setIcon(TablerQIcon.focus_2)
+        self.calibrate_button.clicked.connect(self.calibrate_requested.emit)
+        layout.addWidget(self.calibrate_button)
         
-        # Explicit tab order: Alpha→Beta→X→Y→Go
+        # Explicit tab order: Alpha→Beta→Go→X→Y→Queue→Send
         self.setTabOrder(self.alpha_input, self.beta_input)
-        self.setTabOrder(self.beta_input, self.x_input)
+        self.setTabOrder(self.beta_input, self.go_button)
+        self.setTabOrder(self.go_button, self.x_input)
         self.setTabOrder(self.x_input, self.y_input)
-        self.setTabOrder(self.y_input, self.go_button)
+        self.setTabOrder(self.y_input, self.xy_queue_button)
+        self.setTabOrder(self.xy_queue_button, self.xy_send_button)
+        self.setTabOrder(self.xy_send_button, self.send_queue_button)
 
         layout.addStretch()
     def eventFilter(self, obj, event):
@@ -186,33 +210,44 @@ class ControlPanel(QWidget):
             self.pid_combo.setCurrentIndex(idx)
             self.pid_combo.blockSignals(False)
 
-    def _on_go_clicked(self):
-
+    def _on_angle_go_clicked(self):
         if self.pid_combo.count() == 0:
             return
             
         pid = self.pid_combo.currentData()
         alpha_text = self.alpha_input.text()
         beta_text = self.beta_input.text()
-        x_text = self.x_input.text()
-        y_text = self.y_input.text()
 
         try:
             alpha = float(alpha_text) if alpha_text else 0.0
             beta = float(beta_text) if beta_text else 0.0
+        except ValueError:
+            return
+
+        self.move_requested.emit(pid, alpha, beta)
+
+    def _on_xy_queue_clicked(self):
+        if self.pid_combo.count() == 0:
+            return
+            
+        pid = self.pid_combo.currentData()
+        x_text = self.x_input.text()
+        y_text = self.y_input.text()
+
+        try:
             x = float(x_text) if x_text else 0.0
             y = float(y_text) if y_text else 0.0
         except ValueError:
             return
 
-        if not self.AngleMode:
-            # Emit absolute physical coords; MainWindow resolves the positioner
-            # center from AppModel, subtracts it, and runs IK — keeping this
-            # widget free of domain knowledge.
-            self.xy_move_requested.emit(pid, x, y)
+        self.xy_queue_requested.emit(pid, x, y)
+
+    def _on_xy_send_clicked(self):
+        if self.pid_combo.count() == 0:
+            return
             
-        else:
-            self.move_requested.emit(pid, alpha, beta)
+        pid = self.pid_combo.currentData()
+        self.single_queued_move_requested.emit(pid)
 
     def update_queue_state(self, positioners_dict):
         queued_count = 0
@@ -232,28 +267,42 @@ class ControlPanel(QWidget):
             self.send_queue_button.setText("Moving...")
             self.send_queue_button.setEnabled(False)
             self.go_button.setEnabled(False)
+            self.xy_queue_button.setEnabled(False)
+            self.xy_send_button.setEnabled(False)
         elif queued_count == 0:
             self.send_queue_button.setText("No Queued Targets")
             self.send_queue_button.setEnabled(False)
             self.go_button.setEnabled(True)
+            self.xy_queue_button.setEnabled(True)
+            self.xy_send_button.setEnabled(False)
         elif has_error:
             self.send_queue_button.setText("Error")
             self.send_queue_button.setEnabled(False)
             self.go_button.setEnabled(True)
+            self.xy_queue_button.setEnabled(True)
+            self.xy_send_button.setEnabled(False)
         else:
             self.send_queue_button.setText(f"Send {queued_count} Target{'s' if queued_count > 1 else ''}")
             self.send_queue_button.setEnabled(True)
             self.go_button.setEnabled(True)
+            self.xy_queue_button.setEnabled(True)
+            # We don't enable xy_send_button generically here, we check if current_pid has a queued target below
 
         current_pid = self.pid_combo.currentData()
+        pid_has_queued_target = False
         if current_pid is not None and current_pid in positioners_dict:
             pos = positioners_dict[current_pid]
+            if pos.queued_target is not None:
+                pid_has_queued_target = True
             if len(pos.queued_solutions) > 1:
                 self.swap_solution_button.setEnabled(True)
             else:
                 self.swap_solution_button.setEnabled(False)
         else:
             self.swap_solution_button.setEnabled(False)
+
+        if not has_moving and not has_error:
+            self.xy_send_button.setEnabled(pid_has_queued_target)
 
     def update_angles(self, alpha: float, beta: float):
         """Populate the alpha/beta fields with the given angles.
@@ -266,10 +315,9 @@ class ControlPanel(QWidget):
         self.beta_input.setText(f"{beta:.3f}")
 
     def update_current_positioner_data(self, pos):
-        """Fill all input fields with the settled state of the selected positioner.
+        """Fill all input fields with the state of the selected positioner.
 
-        Called only when the selected PID changes or a move completes
-        (MOVING → READY), so it is always safe to overwrite the fields.
+        Called when the selected PID changes, a move settles, or the queue updates.
         Uses forward kinematics to derive the XY display from alpha/beta.
 
         Args:
@@ -278,13 +326,18 @@ class ControlPanel(QWidget):
         if pos is None:
             return
 
-        self.alpha_input.setText(f"{pos.alpha:.3f}")
-        self.beta_input.setText(f"{pos.beta:.3f}")
+        if pos.queued_target is not None:
+            alpha, beta = pos.queued_target
+        else:
+            alpha, beta = pos.alpha, pos.beta
+
+        self.alpha_input.setText(f"{alpha:.3f}")
+        self.beta_input.setText(f"{beta:.3f}")
 
         try:
             cx, cy = pos.center
             x, y = solve_forward_kinematics(
-                pos.alpha, pos.beta, cx, cy, SHORT_ARM_LENGTH_MM, LONG_ARM_LENGTH_MM
+                alpha, beta, cx, cy, SHORT_ARM_LENGTH_MM, LONG_ARM_LENGTH_MM
             )
             self.x_input.setText(f"{x:.3f}")
             self.y_input.setText(f"{y:.3f}")
@@ -292,20 +345,20 @@ class ControlPanel(QWidget):
             pass
 
     def flash_invalid_position(self, duration_ms: int = 800):
-        """Briefly change the Go button label to signal an unreachable position.
+        """Briefly change the Add to queue button label to signal an unreachable position.
 
         Called by MainWindow when IK returns no solutions for the requested
         XY coordinate (i.e. outside the reachable annulus).
         """
-        self.go_button.setText("Invalid Position")
-        self.go_button.setStyleSheet("background-color: #ef4444;")
-        self.go_button.setEnabled(False)
-        QTimer.singleShot(duration_ms, self._reset_go_button)
+        self.xy_queue_button.setText("Invalid Position")
+        self.xy_queue_button.setStyleSheet("background-color: #ef4444;")
+        self.xy_queue_button.setEnabled(False)
+        QTimer.singleShot(duration_ms, self._reset_xy_queue_button)
 
-    def _reset_go_button(self):
-        self.go_button.setText("Go To")
-        self.go_button.setStyleSheet("")
-        self.go_button.setEnabled(True)
+    def _reset_xy_queue_button(self):
+        self.xy_queue_button.setText("Add to queue")
+        self.xy_queue_button.setStyleSheet("")
+        self.xy_queue_button.setEnabled(True)
 
 
     def _on_swap_solution_clicked(self):

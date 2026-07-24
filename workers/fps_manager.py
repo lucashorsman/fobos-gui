@@ -41,6 +41,9 @@ class FPSManager(QThread):
                 self._fps = MockFPS(num_positioners=5)
             else:
                 from jaeger.core import FPS
+                import logging
+                logging.getLogger("jaeger").propagate = False
+                logging.getLogger("jaeger_can").propagate = False
 
                 # Tear down any stale singleton left over from a previous failed
                 # connection attempt.  If FPS() raises "already running", retrieve

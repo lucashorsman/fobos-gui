@@ -63,13 +63,11 @@ class MoveDispatcher(QObject):
         )
         self._dispatch({pid: (alpha, beta)})
 
-    def on_xy_move_requested(self, pid: int, abs_x: float, abs_y: float):
-        """Single-positioner move from the manual XY entry panel.
+    def on_xy_queue_requested(self, pid: int, abs_x: float, abs_y: float):
+        """Single-positioner queue from the manual XY entry panel.
 
         Converts absolute physical coordinates to a positioner-relative offset,
-        runs IK, then dispatches immediately via the same path as angle mode.
-        IK and center lookup live here (not in ControlPanel) because this is
-        the only layer that has access to both the model and the dispatch loop.
+        runs IK, then queues the move in the AppModel.
         """
         if pid not in self._model.positioners:
             return
@@ -80,14 +78,27 @@ class MoveDispatcher(QObject):
         # Axis inversion matches the kinematic convention in Grid2d / CameraWidget.
         solutions = solve_inverse_kinematics(-rel_x, -rel_y, SHORT_ARM_LENGTH_MM, LONG_ARM_LENGTH_MM)
         if solutions:
+            self._model.queue_move(pid, solutions)
             alpha, beta = solutions[0]
             self.angles_updated.emit(
                 normalize_for_positioner(alpha),
                 normalize_for_positioner(beta),
             )
-            self.on_move_requested(pid, alpha, beta)
         else:
             self.invalid_position.emit()
+
+    def on_single_queued_move_requested(self, pid: int):
+        """Sends the currently queued target for a specific positioner."""
+        queued_moves = self._model.get_queued_moves()
+        if pid in queued_moves:
+            target = {pid: queued_moves[pid]}
+            if self._dispatch(target):
+                # Clear queue for just this pid
+                p = self._model.positioners[pid]
+                p.queued_target = None
+                p.queued_solutions = []
+                p.queued_solution_index = 0
+                self._model.model_updated.emit()
 
     def on_batch_move_requested(self):
         """Send all queued targets to hardware in a single CAN bus transaction."""

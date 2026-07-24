@@ -62,9 +62,10 @@ class MainWindow(QMainWindow):
         self.current_main_view.swap_button.setVisible(False)
         self.current_small_view.swap_button.setVisible(True)
 
-        # Used to detect PID-switch and settle events in _on_model_updated
+        # Used to detect PID-switch, settle events, and queue updates in _on_model_updated
         self._prev_selected_pid: int | None = None
         self._prev_selected_state: str | None = None
+        self._prev_queued_target: tuple | None = None
 
         self.mouse_coord_label = QLabel("X: --, Y: --")
         self.mouse_coord_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -105,7 +106,8 @@ class MainWindow(QMainWindow):
     def _wire_dispatcher_signals(self):
         """MoveDispatcher ↔ MainWindow ↔ ControlPanel."""
         self.control_panel.move_requested.connect(self.dispatcher.on_move_requested)
-        self.control_panel.xy_move_requested.connect(self.dispatcher.on_xy_move_requested)
+        self.control_panel.xy_queue_requested.connect(self.dispatcher.on_xy_queue_requested)
+        self.control_panel.single_queued_move_requested.connect(self.dispatcher.on_single_queued_move_requested)
         self.control_panel.batch_move_requested.connect(self.dispatcher.on_batch_move_requested)
         self.dispatcher.angles_updated.connect(self.control_panel.update_angles)
         self.dispatcher.invalid_position.connect(self.control_panel.flash_invalid_position)
@@ -169,28 +171,32 @@ class MainWindow(QMainWindow):
         )
 
     def _maybe_fill_control_panel_inputs(self):
-        """Fill control panel inputs only on PID-switch or positioner settle.
+        """Fill control panel inputs only on PID-switch, positioner settle, or queue update.
 
         Avoids clobbering user input during a move or on every 5 Hz poll tick.
         Triggers when:
         - The selected positioner ID changes (operator switched PIDs).
         - The selected positioner transitions from MOVING → READY (move settled).
+        - The queued target changes.
         """
         pid = self.model.selected_positioner_id
         pos = self.model.positioners.get(pid)
         current_state = pos.state if pos else None
+        current_queued = pos.queued_target if pos else None
 
         pid_changed = pid != self._prev_selected_pid
         settled = (
             self._prev_selected_state == PositionerState.MOVING
             and current_state == PositionerState.READY
         )
+        queued_changed = current_queued != self._prev_queued_target
 
-        if pid_changed or settled:
+        if pid_changed or settled or queued_changed:
             self.control_panel.update_current_positioner_data(pos)
 
         self._prev_selected_pid = pid
         self._prev_selected_state = current_state
+        self._prev_queued_target = current_queued
 
     # -- View swapping -------------------------------------------------------
 
